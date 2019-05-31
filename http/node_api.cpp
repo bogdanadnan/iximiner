@@ -7,7 +7,7 @@
 
 node_api::node_api(string wallet) {
     __wallet = wallet;
-    __last_peer_update = 0;
+//    __last_peer_update = 0;
 }
 
 account_balance node_api::get_account_balance() {
@@ -17,21 +17,21 @@ account_balance node_api::get_account_balance() {
 
     string peer_url = __get_peer();
 
-    string response = _http_get(peer_url + "/api.php?q=getBalance&account=" + __wallet);
+    string response = _http_get(peer_url + "/getbalance?account=" + __wallet);
 
     if(!response.empty()) {
         json::JSON data = json::JSON::Load(response);
         if(data.JSONType() == json::JSON::Class::Object &&
-           data.hasKey("status") &&
-           data["status"].ToString() == "ok" &&
-           data.hasKey("data")) {
-            balance.amount = atof(data["data"].ToString().c_str());
+           data.hasKey("result") &&
+           !data["result"].IsNull()) {
+            balance.amount = atof(data["result"].ToString().c_str());
         }
     }
     else {
         return balance;
     }
 
+/*  TODO - get transactions for a specific wallet
     time_t timestamp = time(NULL);
     response = _http_get(peer_url + "/api.php?q=getTransactions&account=" + __wallet);
 
@@ -61,12 +61,13 @@ account_balance node_api::get_account_balance() {
                 }
             }
         }
-    }
+    } */
 
     return balance;
 }
 
 string node_api::__get_peer() {
+/*  TODO get list of peers to connect to
     if(time(NULL) - __last_peer_update > 3600) {
         string result = _http_get("http://api.arionum.com/peers.txt");
         if (!result.empty() && result.find("http://") != string::npos) {
@@ -93,6 +94,7 @@ string node_api::__get_peer() {
         peer_url = __peers[selected_index];
     }
     __peers_lock.unlock();
+*/
 
-    return peer_url;
+    return "http://ixinode.changeling.biz";
 }

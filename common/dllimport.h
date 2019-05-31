@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 04.11.2018.
 //
 
-#ifndef ARIOMINER_DLLIMPORT_H
-#define ARIOMINER_DLLIMPORT_H
+#ifndef IXIMINER_DLLIMPORT_H
+#define IXIMINER_DLLIMPORT_H
 
 #ifndef DLLEXPORT
     #ifndef _WIN64
@@ -13,4 +13,4 @@
     #endif
 #endif
 
-#endif //ARIOMINER_DLLIMPORT_H
+#endif //IXIMINER_DLLIMPORT_H

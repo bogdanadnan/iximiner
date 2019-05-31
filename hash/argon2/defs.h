@@ -6,7 +6,7 @@
 #define ARIOMINER_DEFS_H
 
 #define ARGON2_RAW_LENGTH               32
-#define ARGON2_TYPE_VALUE               1
+#define ARGON2_TYPE_VALUE               2
 #define ARGON2_VERSION                  0x13
 
 #define ARGON2_BLOCK_SIZE               1024
@@ -36,6 +36,7 @@ typedef struct Argon2Profile {
 
 extern DLLEXPORT argon2profile argon2profile_4_4_16384;
 extern DLLEXPORT argon2profile argon2profile_1_1_524288;
+extern DLLEXPORT argon2profile argon2profile_1_2_1024;
 extern DLLEXPORT argon2profile *argon2profile_default;
 
 #ifdef __cplusplus

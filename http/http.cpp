@@ -5,6 +5,8 @@
 #include "../common/common.h"
 #include "http_parser/http_parser.h"
 
+#include <cpr/cpr.h>
+
 #include "http.h"
 
 #ifdef _WIN64
@@ -117,7 +119,7 @@ http::~http() {
 #endif
 }
 
-vector<string> http::__resolve_host(const string &hostname)
+vector<string> http::_resolve_host(const string &hostname)
 {
     string host = hostname;
 
@@ -149,7 +151,32 @@ vector<string> http::__resolve_host(const string &hostname)
     return addresses;
 }
 
-string http::__get_response(const string &url, const string &post_data, const string &content_type) {
+string http::_encode(const string &src) {
+    string new_str = "";
+    char c;
+    int ic;
+    const char* chars = src.c_str();
+    char bufHex[10];
+    int len = strlen(chars);
+
+    for(int i=0;i<len;i++){
+        c = chars[i];
+        ic = c;
+        if (c==' ') new_str += '+';
+        else if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') new_str += c;
+        else {
+            sprintf(bufHex,"%X",c);
+            if(ic < 16)
+                new_str += "%0";
+            else
+                new_str += "%";
+            new_str += bufHex;
+        }
+    }
+    return new_str;
+}
+
+string http_internal_impl::__get_response(const string &url, const string &post_data, const string &content_type) {
     http_callback_data reply;
     reply.complete = false;
 
@@ -157,7 +184,7 @@ string http::__get_response(const string &url, const string &post_data, const st
     if(query.protocol != "http")
         return "";
 
-    vector<string> ips = __resolve_host(query.host);
+    vector<string> ips = _resolve_host(query.host);
     for(int i=0;i<ips.size();i++) {
         int sockfd = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in addr;
@@ -248,36 +275,24 @@ string http::__get_response(const string &url, const string &post_data, const st
     return reply.body;
 };
 
-string http::_http_get(const string &url) {
+string http_internal_impl::_http_get(const string &url) {
     return __get_response(url, "", "");
 }
 
-string http::_http_post(const string &url, const string &post_data, const string &content_type) {
+string http_internal_impl::_http_post(const string &url, const string &post_data, const string &content_type) {
     return __get_response(url, post_data, content_type);
 }
 
-string http::_encode(const string &src) {
-    string new_str = "";
-    char c;
-    int ic;
-    const char* chars = src.c_str();
-    char bufHex[10];
-    int len = strlen(chars);
+string http_cpr_impl::_http_get(const string &url) {
+    auto r = cpr::Get(cpr::Url{url});
+    return r.text;
+}
 
-    for(int i=0;i<len;i++){
-        c = chars[i];
-        ic = c;
-        if (c==' ') new_str += '+';
-        else if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') new_str += c;
-        else {
-            sprintf(bufHex,"%X",c);
-            if(ic < 16)
-                new_str += "%0";
-            else
-                new_str += "%";
-            new_str += bufHex;
-        }
-    }
-    return new_str;
+string http_cpr_impl::_http_post(const string &url, const string &post_data, const string &content_type) {
+    auto r = cpr::Post(cpr::Url{url},
+                       cpr::Body{post_data},
+                       cpr::Header{{"Content-Type", content_type}});
+
+    return r.text;
 }
 

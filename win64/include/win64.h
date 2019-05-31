@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 13/08/2018.
 //
 
-#ifndef ARIOMINER_WIN64_COMPATIBILITY_LAYER_H
-#define ARIOMINER_WIN64_COMPATIBILITY_LAYER_H
+#ifndef IXIMINER_WIN64_COMPATIBILITY_LAYER_H
+#define IXIMINER_WIN64_COMPATIBILITY_LAYER_H
 
 //#include <windows.h>
 #include <WinSock2.h>
@@ -23,4 +23,4 @@ int gettimeofday(struct timeval *tv, struct timezone *tz);
 }
 #endif
 
-#endif //ARIOMINER_WIN32_COMPATIBILITY_LAYER_H
+#endif //IXIMINER_WIN32_COMPATIBILITY_LAYER_H

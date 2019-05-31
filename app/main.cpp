@@ -7,7 +7,7 @@
 #include "runner.h"
 #include "../miner/miner.h"
 #include "../autotune/autotune.h"
-#include "../proxy/proxy.h"
+//#include "../proxy/proxy.h"
 #include "../hash/hasher.h"
 
 runner *main_app = NULL;
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
     string args_err;
     if(!args.valid(args_err)) {
         cout << args_err << endl;
-        cout << "Type ariominer --help for usage information." << endl;
+        cout << "Type iximiner --help for usage information." << endl;
         return 0;
     }
 
@@ -61,9 +61,10 @@ int main(int argc, char *argv[]) {
         a.run();
     }
     else if(args.is_proxy()) {
-        proxy p(args);
-        main_app = &p;
-        p.run();
+//        proxy p(args);
+//        main_app = &p;
+//        p.run();
+        LOG("Proxy mode is not supported yet.");
     }
 
     return 0;

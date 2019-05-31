@@ -40,8 +40,7 @@ void autotune::run() {
 	    initialized = selected_hasher->initialize();
         if (initialized) {
             selected_hasher->configure(__args);
-            selected_hasher->set_input("test_public_key", "test_blk", "test_difficulty", __args.argon2_profile(),
-                                       "mine");
+            selected_hasher->set_input(0, "BnilA6Sju93AWcWxaRf7w1U3GmChGDXdLgDVk97wjt5M3MXmJH1nnzdFP1Y=", "AUWgIEMwWJxIepw3U8BwnTWAkKtNWKkKlbPwWaGabwoVmrvKjosYfMKu8Y0uM0tU", "mine");
         }
 		LOG("Compute unit: " + selected_hasher->get_type() + " - " + selected_hasher->get_subtype());
 		LOG(selected_hasher->get_info());
@@ -61,16 +60,11 @@ void autotune::run() {
         }
 
         cout << fixed << setprecision(2) <<"Intensity " << intensity << ": " << flush;
-        if(__args.argon2_profile() == "1_1_524288") {
-            __args.gpu_intensity_cblocks().clear();
-            __args.gpu_intensity_cblocks().push_back(intensity);
-        }
-        else {
-            __args.gpu_intensity_gblocks().clear();
-            __args.gpu_intensity_gblocks().push_back(intensity);
-        }
 
+        __args.gpu_intensity().clear();
+        __args.gpu_intensity().push_back(intensity);
 		__args.set_cards_count(0);
+
 		selected_hasher->cleanup();
 		selected_hasher->initialize();
 		selected_hasher->configure(__args);
