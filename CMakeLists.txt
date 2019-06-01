@@ -133,9 +133,10 @@ if(NOT WITHOUT_OPENCL)
             LIBRARY_OUTPUT_DIRECTORY modules
             )
     target_link_libraries(opencl_hasher hasher ${OpenCL_LIBRARY})
-#    add_dependencies(iximiner opencl_hasher)
+    add_dependencies(iximiner opencl_hasher)
 
-    if(NOT WITHOUT_AMDGCN)
+#    if(NOT WITHOUT_AMDGCN)
+    if(0)
         add_definitions(-DWITH_AMDGCN)
         list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/hash/gpu/amdgcn/CLRX/cmake")
         add_subdirectory("hash/gpu/amdgcn/CLRX")
@@ -151,7 +152,7 @@ if(NOT WITHOUT_OPENCL)
                 )
         target_link_libraries(amdgcn_hasher hasher CLRXCLHelperStatic CLRXAmdAsmStatic
                 CLRXAmdBinStatic CLRXUtilsStatic ${OpenCL_LIBRARY})
-#        add_dependencies(iximiner amdgcn_hasher)
+        add_dependencies(iximiner amdgcn_hasher)
     endif()
 endif()
 
