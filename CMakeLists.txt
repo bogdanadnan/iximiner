@@ -118,7 +118,7 @@ if(NOT WITHOUT_CUDA)
             LIBRARY_OUTPUT_DIRECTORY modules
             )
     target_link_libraries(cuda_hasher hasher)
-#    add_dependencies(iximiner cuda_hasher)
+    add_dependencies(iximiner cuda_hasher)
 endif()
 
 if(NOT WITHOUT_OPENCL)
