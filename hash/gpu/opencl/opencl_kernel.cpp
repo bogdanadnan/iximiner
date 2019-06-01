@@ -310,7 +310,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 		ulong4 ref = 0, next = 0;
 		ulong4 nextref = 0;
 
-        ushort addr1 = start_addr[1];
+        short addr1 = start_addr[1];
         if(addr1 != -1) {
     		nextref = vload4(0, memory + addr1 * BLOCK_SIZE_ULONG + offset);
         }
@@ -325,7 +325,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
                     nextref = vload4(0, memory + start_addr[3] * BLOCK_SIZE_ULONG + offset);
             }
             else {
-                ulong pseudo_rand = (state + offset)[0];
+                ulong pseudo_rand = state[0];
 
                 ulong ref_lane = ((pseudo_rand >> 32)) % 2; // thr_cost
                 uint reference_area_size = 0;
