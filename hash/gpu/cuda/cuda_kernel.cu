@@ -432,7 +432,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 	segments += segment;
 	uint16_t addr_start_idx = 0;
 	uint16_t prev_blk_idx;
-	int inc = 1022;
+	int inc = 126;
 
 	for(int s=0; s<4; s++) {
 		int idx = ((s == 0) ? 2 : 0); // index for first slice in each lane is 2
@@ -443,7 +443,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 
 		uint32_t *addr = addresses + addr_start_idx;
 		uint32_t *stop_addr = addresses + addr_start_idx + inc;
-		inc = 1024;
+		inc = 128;
 
 		prev_block = memory + prev_blk_idx * BLOCK_SIZE_UINT4;
 
@@ -482,22 +482,19 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 					}
 				}
 				else {
-					uint64_t pseudo_rand = __shfl_sync(0xffffffff, tmp_a.x, 0);
+					uint32_t pseudo_rand_lo = __shfl_sync(0xffffffff, tmp_a.x, 0);
+					uint32_t pseudo_rand_hi = __shfl_sync(0xffffffff, tmp_a.y, 0);
 
-					uint64_t ref_lane = ((pseudo_rand >> 32)) % 2; // thr_cost
+					uint64_t ref_lane = pseudo_rand_hi % 2; // thr_cost
 					uint32_t reference_area_size = 0;
 					if (segment == ref_lane) {
-						reference_area_size =
-								s * 128 + idx - 1; // seg_length
+						reference_area_size = s * 128 + idx - 1; // seg_length
 					} else {
-						reference_area_size =
-								s * 128 + ((idx == 0) ? (-1) : 0);
+						reference_area_size = s * 128 + ((idx == 0) ? (-1) : 0);
 					}
-					uint64_t relative_position = pseudo_rand & 0xFFFFFFFF;
-					relative_position = relative_position * relative_position >> 32;
+					asm("{mul.hi.u32 %0, %1, %1; mul.hi.u32 %0, %0, %2; }": "=r"(pseudo_rand_lo) : "r"(pseudo_rand_lo), "r"(reference_area_size));
 
-					relative_position = reference_area_size - 1 -
-										(reference_area_size * relative_position >> 32);
+					uint32_t relative_position = reference_area_size - 1 - pseudo_rand_lo;
 
 					addr1 = ref_lane * 512 + relative_position % 512; // lane_length
 
