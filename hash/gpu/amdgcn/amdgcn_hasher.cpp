@@ -74,10 +74,10 @@ bool amdgcn_hasher::configure(arguments &args) {
 	}
 	intensity_cpu /= args.gpu_intensity_cblocks().size();
 
-	for(vector<double>::iterator it = args.gpu_intensity_gblocks().begin(); it != args.gpu_intensity_gblocks().end(); it++) {
+	for(vector<double>::iterator it = args.gpu_intensity().begin(); it != args.gpu_intensity().end(); it++) {
 		intensity_gpu += *it;
 	}
-	intensity_gpu /= args.gpu_intensity_gblocks().size();
+	intensity_gpu /= args.gpu_intensity().size();
 
 	vector<string> filter = _get_gpu_filters(args);
 
@@ -130,10 +130,10 @@ bool amdgcn_hasher::configure(arguments &args) {
 			device_intensity_cpu = args.gpu_intensity_cblocks()[(*d)->device_index];
 
 		double device_intensity_gpu = 0;
-		if(args.gpu_intensity_gblocks().size() == 1 || (*d)->device_index >= args.gpu_intensity_gblocks().size())
-			device_intensity_gpu = args.gpu_intensity_gblocks()[0];
+		if(args.gpu_intensity().size() == 1 || (*d)->device_index >= args.gpu_intensity().size())
+			device_intensity_gpu = args.gpu_intensity()[0];
 		else
-			device_intensity_gpu = args.gpu_intensity_gblocks()[(*d)->device_index];
+			device_intensity_gpu = args.gpu_intensity()[(*d)->device_index];
 
 		_description += ss.str();
 
@@ -800,7 +800,7 @@ void amdgcn_hasher::__run(amdgcn_device_info *device, int thread_id) {
 				hash_factory.set_threads(device->profile_info.threads_profile_4_4_16384);
 			}
 
-			vector<string> hashes = hash_factory.generate_hashes(*profile, input.base, input.salt);
+			vector<string> hashes = hash_factory.generate_hashes(*profile, input.base, input.base);
 
 			if (device->error != CL_SUCCESS) {
 				LOG("Error running kernel: (" + to_string(device->error) + ")" + device->error_message);

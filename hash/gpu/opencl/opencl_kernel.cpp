@@ -9,9 +9,7 @@
 string opencl_kernel = R"OCL(
 #define ITEMS_PER_SEGMENT               32
 #define BLOCK_SIZE_ULONG                128
-#define CBLOCKS_MEMSIZE					96995
-#define GBLOCKS_MEMSIZE					16384
-#define CBLOCKS_REFSIZE					524286
+#define MEMSIZE					        1024
 
 #define fBlaMka(x, y) ((x) + (y) + 2 * upsample(mul_hi((uint)(x), (uint)(y)), (uint)(x) * (uint)y))
 
@@ -218,96 +216,7 @@ __constant char offsets_round_4[32][4] = {
     mem_fence(CLK_LOCAL_MEM_FENCE); \
 }
 
-__kernel void fill_cblocks(__global ulong *chunk_0,
-						__global ulong *chunk_1,
-						__global ulong *chunk_2,
-						__global ulong *chunk_3,
-						__global ulong *chunk_4,
-						__global ulong *chunk_5,
-						__global ulong *seed,
-						__global ulong *out,
-						__global int *addresses,
-						int threads_per_chunk) {
-	__local ulong state[BLOCK_SIZE_ULONG];
-	__local int addr[64];
-	ulong4 tmp;
-
-	int hash = get_group_id(0);
-	int id = get_local_id(0);
-	int offset = id * 4;
-
-	ulong chunks[4];
-	chunks[0] = (ulong)chunk_0;
-	chunks[1] = (ulong)chunk_1;
-	chunks[2] = (ulong)chunk_2;
-	chunks[3] = (ulong)chunk_3;
-//	chunks[4] = (ulong)chunk_4;
-//	chunks[5] = (ulong)chunk_5;
-	int chunk_index = hash / threads_per_chunk;
-	int chunk_offset = hash - chunk_index * threads_per_chunk;
-	__global ulong *memory = (__global ulong *)chunks[chunk_index] + chunk_offset * CBLOCKS_MEMSIZE * BLOCK_SIZE_ULONG;
-
-	ulong a, b, c, d;
-
-	int i1_0 = offsets_round_1[id][0];
-	int i1_1 = offsets_round_1[id][1];
-	int i1_2 = offsets_round_1[id][2];
-	int i1_3 = offsets_round_1[id][3];
-
-	int i2_0 = offsets_round_2[id][0];
-	int i2_1 = offsets_round_2[id][1];
-	int i2_2 = offsets_round_2[id][2];
-	int i2_3 = offsets_round_2[id][3];
-
-	int i3_0 = offsets_round_3[id][0];
-	int i3_1 = offsets_round_3[id][1];
-	int i3_2 = offsets_round_3[id][2];
-	int i3_3 = offsets_round_3[id][3];
-
-	int i4_0 = offsets_round_4[id][0];
-	int i4_1 = offsets_round_4[id][1];
-	int i4_2 = offsets_round_4[id][2];
-	int i4_3 = offsets_round_4[id][3];
-
-	__global ulong *out_mem = out + hash * 2 * BLOCK_SIZE_ULONG;
-	__global ulong *seed_mem = seed + hash * 2 * BLOCK_SIZE_ULONG;
-
-	vstore4(vload4(0, seed_mem + offset), 0, memory + offset);
-	seed_mem += BLOCK_SIZE_ULONG;
-	vstore4(vload4(0, seed_mem + offset), 0, memory + BLOCK_SIZE_ULONG + offset);
-
-	__global int *stop_addr = addresses + CBLOCKS_REFSIZE * 2;
-
-	tmp = vload4(0, seed_mem + offset);
-
-	for(; addresses < stop_addr; addresses += 64) {
-		addr[id] = addresses[id];
-		addr[id + 32] = addresses[id + 32];
-
-		uint i_limit = (stop_addr - addresses) >> 1;
-		if(i_limit > 32) i_limit = 32;
-
-		for(int i=0;i<i_limit;i++) {
-			int addr0 = addr[i];
-
-			tmp ^= vload4(0, memory + addr[i + 32] * BLOCK_SIZE_ULONG + offset);
-			vstore4(tmp, 0, state + offset);
-
-			G1(state);
-			G2(state);
-			G3(state);
-			G4(state);
-
-			tmp ^= vload4(0, state + offset);
-
-			if (addr0 != -1)
-				vstore4(tmp, 0, memory + addr0 * BLOCK_SIZE_ULONG + offset);
-		}
-	}
-	vstore4(tmp, 0, out_mem + offset);
-};
-
-__kernel void fill_gblocks(__global ulong *chunk_0,
+__kernel void fill_blocks(__global ulong *chunk_0,
 						__global ulong *chunk_1,
 						__global ulong *chunk_2,
 						__global ulong *chunk_3,
@@ -318,7 +227,7 @@ __kernel void fill_gblocks(__global ulong *chunk_0,
 						__global int *addresses,
 						__global int *segments,
 						int threads_per_chunk) {
-	__local ulong scratchpad[4 * BLOCK_SIZE_ULONG];
+	__local ulong scratchpad[2 * BLOCK_SIZE_ULONG];
 	ulong4 tmp;
 	ulong a, b, c, d;
 
@@ -338,7 +247,7 @@ __kernel void fill_gblocks(__global ulong *chunk_0,
 	chunks[5] = (ulong)chunk_5;
 	int chunk_index = hash / threads_per_chunk;
 	int chunk_offset = hash - chunk_index * threads_per_chunk;
-	__global ulong *memory = (__global ulong *)chunks[chunk_index] + chunk_offset * GBLOCKS_MEMSIZE * BLOCK_SIZE_ULONG;
+	__global ulong *memory = (__global ulong *)chunks[chunk_index] + chunk_offset * MEMSIZE * BLOCK_SIZE_ULONG;
 
 	int i1_0 = offsets_round_1[id][0];
 	int i1_1 = offsets_round_1[id][1];
@@ -360,10 +269,10 @@ __kernel void fill_gblocks(__global ulong *chunk_0,
 	int i4_2 = offsets_round_4[id][2];
 	int i4_3 = offsets_round_4[id][3];
 
-	__global ulong *out_mem = out + hash * 8 * BLOCK_SIZE_ULONG;
-	__global ulong *seed_mem = seed + hash * 8 * BLOCK_SIZE_ULONG + segment * 2 * BLOCK_SIZE_ULONG;
+	__global ulong *out_mem = out + hash * 4 * BLOCK_SIZE_ULONG;
+	__global ulong *seed_mem = seed + hash * 4 * BLOCK_SIZE_ULONG + segment * 2 * BLOCK_SIZE_ULONG;
 
-	__global ulong *seed_dst = memory + segment * 4096 * BLOCK_SIZE_ULONG;
+	__global ulong *seed_dst = memory + segment * 512 * BLOCK_SIZE_ULONG;
 
 	vstore4(vload4(0, seed_mem + offset), 0, seed_dst + offset);
 
@@ -379,46 +288,67 @@ __kernel void fill_gblocks(__global ulong *chunk_0,
 	__local ulong *state = scratchpad + segment * BLOCK_SIZE_ULONG;
 
 	segments += segment;
-	int inc = 1022;
+	int inc = 126;
 
-	int dont_store = 0;
+	for(int s=0; s<4; s++) {
+		int idx = ((s == 0) ? 2 : 0); // index for first slice in each lane is 2
 
-	for(int s=0; s<16; s++) {
-		__global ushort *curr_seg = (__global ushort *)(segments + s * 4);
+		__global ushort *curr_seg = (__global ushort *)(segments + s * 2);
 
 		ushort addr_start_idx = curr_seg[0];
 		ushort prev_blk_idx = curr_seg[1];
 
 		__global short *start_addr = (__global short *)(addresses + addr_start_idx);
 		__global short *stop_addr = (__global short *)(addresses + addr_start_idx + inc);
-		inc = 1024;
+		inc = 128;
 
 		prev_block = memory + prev_blk_idx * BLOCK_SIZE_ULONG;
 
 		tmp = vload4(0, prev_block + offset);
+        vstore4(tmp, 0, state + offset);
+
 		ulong4 ref = 0, next = 0;
 		ulong4 nextref = 0;
-		ref = vload4(0, memory + start_addr[1] * BLOCK_SIZE_ULONG + offset);
 
-		for(; start_addr < stop_addr; start_addr+=2) {
-			ushort addr0 = start_addr[0];
-			if(s >= 12) {
-				dont_store = addr0 >> 15;
-				addr0 = addr0 & 32767;
-			}
-			else {
-				dont_store = 0;
-			}
+        short addr1 = start_addr[1];
+        if(addr1 != -1) {
+    		nextref = vload4(0, memory + addr1 * BLOCK_SIZE_ULONG + offset);
+        }
 
-			next_block = memory + addr0 * BLOCK_SIZE_ULONG;
+		for(; start_addr < stop_addr; start_addr+=2, idx++) {
+            addr1 = start_addr[1];
+			next_block = memory + start_addr[0] * BLOCK_SIZE_ULONG;
 
-			if(s >= 4)
-				next = vload4(0, next_block + offset);
+            if(addr1 != -1) {
+                ref = nextref;
+                if(start_addr + 2 < stop_addr)
+                    nextref = vload4(0, memory + start_addr[3] * BLOCK_SIZE_ULONG + offset);
+            }
+            else {
+                ulong pseudo_rand = state[0];
 
-			if(start_addr + 2 < stop_addr)
-				nextref = vload4(0, memory + start_addr[3] * BLOCK_SIZE_ULONG + offset);
+                ulong ref_lane = ((pseudo_rand >> 32)) % 2; // thr_cost
+                uint reference_area_size = 0;
+                if (segment == ref_lane) {
+                    reference_area_size =
+                            s * 128 + idx - 1; // seg_length
+                } else {
+                    reference_area_size =
+                            s * 128 + ((idx == 0) ? (-1) : 0);
+                }
+                ulong relative_position = pseudo_rand & 0xFFFFFFFF;
+                relative_position = relative_position * relative_position >> 32;
 
-			tmp ^= ref;
+                relative_position = reference_area_size - 1 -
+                                    (reference_area_size * relative_position >> 32);
+
+                addr1 = ref_lane * 512 + relative_position % 512; // lane_length
+
+        		ref = vload4(0, memory + addr1 * BLOCK_SIZE_ULONG + offset);
+            }
+
+            tmp ^= ref;
+
 			vstore4(tmp, 0, state + offset);
 
 			G1(state);
@@ -426,26 +356,23 @@ __kernel void fill_gblocks(__global ulong *chunk_0,
 			G3(state);
 			G4(state);
 
-			if(s >= 4)
-				tmp ^= next;
-
 			tmp ^= vload4(0, state + offset);
-			if(!dont_store) {
-				vstore4(tmp, 0, next_block + offset);
-			}
 
-			ref = nextref;
+            vstore4(tmp, 0, next_block + offset);
+            vstore4(tmp, 0, state + offset);
 		}
 		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
 
-	__global short *out_addr = (__global short *)(addresses + 65528);
+	__global short *out_addr = (__global short *)(addresses + 1020);
 
-	ulong out_data = (memory + out_addr[0] * BLOCK_SIZE_ULONG)[local_id];
-	out_data ^= (memory + out_addr[1] * BLOCK_SIZE_ULONG)[local_id];
-	out_data ^= (memory + out_addr[3] * BLOCK_SIZE_ULONG)[local_id];
-	out_data ^= (memory + out_addr[5] * BLOCK_SIZE_ULONG)[local_id];
+	ulong out_data0 = (memory + out_addr[0] * BLOCK_SIZE_ULONG)[local_id];
+	ulong out_data1 = (memory + out_addr[0] * BLOCK_SIZE_ULONG)[local_id + 64];
 
-	out_mem[local_id] = out_data;
+	out_data0 ^= (memory + out_addr[1] * BLOCK_SIZE_ULONG)[local_id];
+	out_data1 ^= (memory + out_addr[1] * BLOCK_SIZE_ULONG)[local_id + 64];
+
+	out_mem[local_id] = out_data0;
+	out_mem[local_id + 64] = out_data1;
 };
 )OCL";

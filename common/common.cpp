@@ -7,6 +7,8 @@
 #include <dirent.h>
 
 uint64_t microseconds() {
+//	return (1000000 * time(NULL)); // seconds precision is good enough
+
     struct timeval time;
     gettimeofday(&time, NULL);
     return (uint64_t)time.tv_sec * 1000000 + (uint64_t)time.tv_usec;

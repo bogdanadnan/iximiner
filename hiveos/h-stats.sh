@@ -6,27 +6,21 @@
 
 json_data=`curl -s http://localhost:${CUSTOM_API_PORT}/status`
 
-cblocks_hashrates=`echo $json_data | jq -c ".[]" | jq -c ".hashers[]" | jq -c ".devices[]" | jq -c ".cblocks_hashrate"`
-gblocks_hashrates=`echo $json_data | jq -c ".[]" | jq -c ".hashers[]" | jq -c ".devices[]" | jq -c ".gblocks_hashrate"`
+hashrates=`echo $json_data | jq -c ".[]" | jq -c ".hashers[]" | jq -c ".devices[]" | jq -c ".hashrate"`
 block_height=`echo $json_data | jq -c ".[]" | jq -c ".block_height"`
-cblocks_shares=`echo $json_data | jq -c ".[]" | jq -c ".cblocks_shares"`
-gblocks_shares=`echo $json_data | jq -c ".[]" | jq -c ".gblocks_shares"`
-cblocks_rejects=`echo $json_data | jq -c ".[]" | jq -c ".cblocks_rejects"`
-gblocks_rejects=`echo $json_data | jq -c ".[]" | jq -c ".gblocks_rejects"`
+shares=`echo $json_data | jq -c ".[]" | jq -c ".shares"`
+rejects=`echo $json_data | jq -c ".[]" | jq -c ".rejects"`
 uptime=`echo $json_data | jq -c ".[]" | jq -c ".time_running"`
 
-total_cblocks_hashrate=`echo $cblocks_hashrates | awk '{sum=0; for(i=1; i<=NF; i++) sum += $i; sum = sum/1000; print sum}'`
-total_gblocks_hashrate=`echo $gblocks_hashrates | awk '{sum=0; for(i=1; i<=NF; i++) sum += $i; sum = sum/1000; print sum}'`
-total_shares=$((cblocks_shares+gblocks_shares))
-total_rejects=$((cblocks_rejects+gblocks_rejects))
+total_hashrate=`echo $hashrates | awk '{sum=0; for(i=1; i<=NF; i++) sum += $i; sum = sum/1000; print sum}'`
 
 gpu_data=`gpu-stats`
 busids_data=`echo $gpu_data | jq -r ".busids[]"`
 busids=($busids_data)
 temp_data=`echo $gpu_data | jq -r ".temp[]"`
-temp=($temp_data)
+temp_local=($temp_data)
 fan_data=`echo $gpu_data | jq -r ".fan[]"`
-fan=($fan_data)
+fan_local=($fan_data)
 device_bus_data=`echo $json_data | jq -c ".[]" | jq -c ".hashers[]" | jq -c ".devices[]" | jq -r ".bus_id"`
 device_bus=($device_bus_data)
 
@@ -38,8 +32,8 @@ for i in "${!device_bus[@]}"; do
   found=0
   for j in "${!busids[@]}"; do
     if [ "${device_bus[$i],,}" == "${busids[$j],,}" ]; then
-	stats_temp="$stats_temp ${temp[$j]}"
-	stats_fan="$stats_fan ${fan[$j]}"
+	stats_temp="$stats_temp ${temp_local[$j]}"
+	stats_fan="$stats_fan ${fan_local[$j]}"
 	bus_number=$(echo ${busids[$j]} | cut -d ':' -f 1 | awk '{printf("%d\n", "0x"$1)}')
 	bus_numbers="$bus_numbers $bus_number"
         found=1
@@ -53,13 +47,8 @@ for i in "${!device_bus[@]}"; do
   fi
 done
 
-if (( block_height % 2 )); then
-	khs=$total_gblocks_hashrate
-	hashrates=$gblocks_hashrates
-else
-	khs=$total_cblocks_hashrate
-	hashrates=$cblocks_hashrates
-fi
+khs=$total_hashrate
+hashrates=$hashrates
 
 stats=$(jq -nc \
 	--argjson hs "`echo "$hashrates" | tr " " "\n" | jq -cs '.'`" \
@@ -67,7 +56,7 @@ stats=$(jq -nc \
 	--argjson temp "`echo "$stats_temp" | tr " " "\n" | jq -cs '.'`" \
 	--argjson fan "`echo "$stats_fan" | tr " " "\n" | jq -cs '.'`" \
 	--arg uptime "$uptime" \
-	--arg ac "$total_shares" --arg rj "$total_rejects" \
-	--arg algo "argon2i" \
+	--arg ac "$shares" --arg rj "$rejects" \
+	--arg algo "argon2id" \
 	--argjson bus_numbers "`echo "$bus_numbers" | tr " " "\n" | jq -cs '.'`" \
 	'{$hs, $hs_units, $temp, $fan, $uptime,ar: [$ac, $rj], $bus_numbers, $algo}')

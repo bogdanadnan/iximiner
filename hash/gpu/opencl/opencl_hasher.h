@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 03/08/2018.
 //
 
-#ifndef ARIOMINER_OPENCL_HASHER_H
-#define ARIOMINER_OPENCL_HASHER_H
+#ifndef IXIMINER_OPENCL_HASHER_H
+#define IXIMINER_OPENCL_HASHER_H
 
 #if defined(WITH_OPENCL)
 
@@ -22,18 +22,15 @@ struct opencl_kernel_arguments {
     cl_mem memory_chunk_3;
     cl_mem memory_chunk_4;
     cl_mem memory_chunk_5;
-    cl_mem address_profile_1_1_524288;
-    cl_mem address_profile_4_4_16384;
-    cl_mem segments_profile_4_4_16384;
+    cl_mem address;
+    cl_mem segments;
     cl_mem seed_memory[2];
     cl_mem out_memory[2];
 };
 
 struct argon2profile_info {
-    uint32_t threads_profile_1_1_524288;
-    uint32_t threads_per_chunk_profile_1_1_524288;
-    uint32_t threads_profile_4_4_16384;
-    uint32_t threads_per_chunk_profile_4_4_16384;
+    uint32_t threads;
+    uint32_t threads_per_chunk;
 };
 
 struct opencl_device_info {
@@ -48,8 +45,7 @@ struct opencl_device_info {
     cl_command_queue queue;
 
     cl_program program;
-	cl_kernel kernel_cblocks;
-	cl_kernel kernel_gblocks;
+	cl_kernel kernel;
 
     int device_index;
 
@@ -77,7 +73,7 @@ public:
 
 private:
     opencl_device_info *__get_device_info(cl_platform_id platform, cl_device_id device);
-    bool __setup_device_info(opencl_device_info *device, double intensity_cpu, double intensity_gpu);
+    bool __setup_device_info(opencl_device_info *device, double intensity);
     vector<opencl_device_info*> __query_opencl_devices(cl_int &error, string &error_message);
 
     void __run(opencl_device_info *device, int thread_id);
@@ -90,4 +86,4 @@ private:
 
 #endif //WITH_OPENCL
 
-#endif //ARIOMINER_OPENCL_HASHER_H
+#endif //IXIMINER_OPENCL_HASHER_H

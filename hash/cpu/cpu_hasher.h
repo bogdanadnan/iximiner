@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 03/08/2018.
 //
 
-#ifndef ARIOMINER_CPU_HASHER_H
-#define ARIOMINER_CPU_HASHER_H
+#ifndef IXIMINER_CPU_HASHER_H
+#define IXIMINER_CPU_HASHER_H
 
 class cpu_hasher : public hasher {
 public:
@@ -32,4 +32,4 @@ private:
     argon2_blocks_filler_ptr __argon2_blocks_filler_ptr;
 };
 
-#endif //ARIOMINER_CPU_HASHER_H
+#endif //IXIMINER_CPU_HASHER_H

@@ -15,14 +15,9 @@
 
 proxy::proxy(arguments &args) : __args(args), __client(args, [&]() { return this->get_status(); }) {
     __running = false;
-    __cblocks_dl = 0;
-    __gblocks_dl = 0;
     __found = 0;
-    __confirmed_cblocks = 0;
-    __confirmed_gblocks = 0;
-    __rejected_cblocks = 0;
-    __rejected_gblocks = 0;
-    __best_dl = 0;
+    __confirmed = 0;
+    __rejected = 0;
     __start = time(NULL);
 }
 
@@ -86,7 +81,7 @@ bool proxy::__update_pool_data() {
     }
     __miner_clients_lock.unlock();
 
-    ariopool_update_result new_settings = __client.update(hash_rate_cblocks, hash_rate_gblocks);
+    pool_update_result new_settings = __client.update(hash_rate_cblocks, hash_rate_gblocks);
 
     bool changed = false;
     if(new_settings.success) {
@@ -183,7 +178,7 @@ string proxy::process_submit_request(const string &ip, const string &miner_id, c
     else
         hash = "$argon2i$v=19$m=16384,t=4,p=4" + argon;
 
-    ariopool_submit_result response = __client.submit(hash, nonce, public_key);
+    pool_submit_result response = __client.submit(hash, nonce, public_key);
 
     string base = public_key + "-" + nonce + "-" + block + "-" + difficulty;
     string duration = miner::calc_duration(base, hash);
