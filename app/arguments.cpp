@@ -528,7 +528,7 @@ string arguments::get_help() {
             "           - proxy: this instance will act as a hub for multiple miners,\n"
             "                    useful to aggregate multiple miners into a single instance\n"
             "                    reducing the load on the pool\n"
-            "   --pool <pool address>: pool/proxy address to connect to (eg. http://aropool.com:80)\n"
+            "   --pool <pool address>: pool/proxy address to connect to (eg. https://ixian.kiramine.com)\n"
             "   --wallet <wallet address>: wallet address\n"
             "                    this is optional if in miner mode and you are connecting to a proxy\n"
             "   --name <worker identifier>: worker identifier\n"
