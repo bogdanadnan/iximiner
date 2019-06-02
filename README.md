@@ -33,7 +33,7 @@ $ git clone http://github.com/bogdanadnan/iximiner.git
 $ cd iximiner
 $ mkdir build
 $ cd build
-$ cmake .. -DCMAKE_BUILD_TYPE=Release
+$ cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_SYSTEM_CURL=1 -DBUILD_CPR_TESTS=0
 $ make
 ```
 
@@ -46,7 +46,7 @@ $ make
 ```
 - starting in autotune mode:
 ```sh
-       ariominer --mode autotune --autotune-start <intensity> --autotune-stop <intensity> --autotune-step <intensity>
+       iximiner --mode autotune --autotune-start <intensity> --autotune-stop <intensity> --autotune-step <intensity>
 ```
 - starting in proxy mode:
 ```sh
