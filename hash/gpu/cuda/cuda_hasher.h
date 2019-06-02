@@ -16,8 +16,10 @@ struct cuda_kernel_arguments {
     void *memory_chunk_5;
     uint32_t *address;
     uint32_t *segments;
-    uint32_t *seed_memory[2];
-    uint32_t *out_memory[2];
+	uint32_t *preseed_memory[2];
+	uint32_t *seed_memory[2];
+	uint32_t *out_memory[2];
+	uint32_t *hash_memory[2];
     uint32_t *host_seed_memory[2];
 };
 
@@ -105,7 +107,9 @@ private:
 // CUDA kernel exports
 extern void cuda_allocate(cuda_device_info *device, double chunks, size_t chunk_size);
 extern void cuda_free(cuda_device_info *device);
+extern bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, void *user_data);
 extern void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void *user_data);
+extern bool cuda_kernel_posthasher(void *memory, int threads, argon2profile *profile, void *user_data);
 // end CUDA kernel exports
 
 #endif //WITH_CUDA

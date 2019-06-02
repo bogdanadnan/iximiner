@@ -14,8 +14,10 @@
 #include "argon2.h"
 #include "defs.h"
 
-argon2::argon2(argon2_blocks_filler_ptr filler, void *seed_memory, void *user_data) {
+argon2::argon2(argon2_blocks_prehash prehash, argon2_blocks_filler_ptr filler, argon2_blocks_posthash posthash, void *seed_memory, void *user_data) {
+    __prehash = prehash;
     __filler = filler;
+    __posthash = posthash;
     __threads = 1;
     __output_memory = __seed_memory = (uint8_t*)seed_memory;
     __seed_memory_offset = argon2profile_default->memsize;
@@ -31,52 +33,92 @@ vector<hash_data> argon2::generate_hashes(const argon2profile &profile, hash_dat
         __inputs.push_back(input);
     }
 
-    initialize_seeds(profile);
-    fill_blocks(profile);
-    encode_hashes(profile);
+    if(initialize_seeds(profile)) {
+        if(fill_blocks(profile)) {
+            if(encode_hashes(profile)) {
+                return __inputs;
+            }
+        }
+    }
 
-    return __inputs;
+    return vector<hash_data>();
 }
 
-void argon2::initialize_seeds(const argon2profile &profile) {
-    uint8_t blockhash[ARGON2_PREHASH_SEED_LENGTH];
+bool argon2::initialize_seeds(const argon2profile &profile) {
     unsigned char base[256];
     unsigned char salt[256];
     size_t base_sz = 0;
     size_t salt_sz = 0;
 
-    for(int i=0;i<__threads;i++) {
-        base_sz = hex::decode(__inputs[i].base.c_str(), base, 256);
-        salt_sz = hex::decode(__inputs[i].nonce.c_str(), salt, 256);
+    if(__prehash != NULL) {
+        for (int i = 0; i < __threads; i++) {
+            base_sz = hex::decode(__inputs[i].base.c_str(), base, 256);
+            salt_sz = hex::decode(__inputs[i].nonce.c_str(), salt, 256);
 
-        __initial_hash(profile, blockhash, (char *)base, base_sz, (char *)salt, salt_sz);
+            memcpy(__seed_memory + i * IXIAN_SEED_SIZE, base, base_sz);
+            memcpy(__seed_memory + i * IXIAN_SEED_SIZE + base_sz, salt, salt_sz);
+        }
 
-        memset(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0,
-               ARGON2_PREHASH_SEED_LENGTH -
-               ARGON2_PREHASH_DIGEST_LENGTH);
+        return (*__prehash)(__seed_memory, __threads, (argon2profile*)&profile, __user_data);
+    }
+    else {
+        uint8_t blockhash[ARGON2_PREHASH_SEED_LENGTH];
 
-        __fill_first_blocks(profile, blockhash, i);
+        for (int i = 0; i < __threads; i++) {
+            base_sz = hex::decode(__inputs[i].base.c_str(), base, 256);
+            salt_sz = hex::decode(__inputs[i].nonce.c_str(), salt, 256);
+
+            __initial_hash(profile, blockhash, (char *) base, base_sz, (char *) salt, salt_sz);
+
+            memset(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0,
+                   ARGON2_PREHASH_SEED_LENGTH -
+                   ARGON2_PREHASH_DIGEST_LENGTH);
+
+            __fill_first_blocks(profile, blockhash, i);
+        }
+
+        return true;
     }
 }
 
-void argon2::fill_blocks(const argon2profile &profile) {
+bool argon2::fill_blocks(const argon2profile &profile) {
     __output_memory = (uint8_t *)(*__filler) (__seed_memory, __threads, (argon2profile*)&profile, __user_data);
+    return __output_memory != NULL;
 }
 
-void argon2::encode_hashes(const argon2profile &profile) {
-    unsigned char raw_hash[ARGON2_RAW_LENGTH];
+bool argon2::encode_hashes(const argon2profile &profile) {
     char encoded_hash[ARGON2_RAW_LENGTH * 2 + 1];
 
-    if(__output_memory != NULL) {
-        for (int i = 0; i < __threads; i++) {
-            blake2b_long((void *) raw_hash, ARGON2_RAW_LENGTH,
-                         (void *) (__output_memory + i * __seed_memory_offset), ARGON2_BLOCK_SIZE);
+    if(__posthash != NULL) {
+        if((*__posthash)(__seed_memory, __threads, (argon2profile*)&profile, __user_data)) {
 
+            for (int i = 0; i < __threads; i++) {
+                hex::encode(__seed_memory + i * ARGON2_RAW_LENGTH, ARGON2_RAW_LENGTH, encoded_hash);
 
-            hex::encode(raw_hash, ARGON2_RAW_LENGTH, encoded_hash);
+                __inputs[i].hash = encoded_hash;
+            }
 
-            __inputs[i].hash = encoded_hash;
+            return true;
         }
+        return false;
+    }
+    else {
+        unsigned char raw_hash[ARGON2_RAW_LENGTH];
+
+        if (__output_memory != NULL) {
+            for (int i = 0; i < __threads; i++) {
+                blake2b_long((void *) raw_hash, ARGON2_RAW_LENGTH,
+                             (void *) (__output_memory + i * __seed_memory_offset), ARGON2_BLOCK_SIZE);
+
+
+                hex::encode(raw_hash, ARGON2_RAW_LENGTH, encoded_hash);
+
+                __inputs[i].hash = encoded_hash;
+            }
+            return true;
+        }
+        else
+            return false;
     }
 }
 

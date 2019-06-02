@@ -8,15 +8,17 @@
 #include "defs.h"
 #include "../hasher.h"
 
+typedef bool (*argon2_blocks_prehash)(void *, int, argon2profile *, void *);
 typedef void *(*argon2_blocks_filler_ptr)(void *, int, argon2profile *, void *);
+typedef bool (*argon2_blocks_posthash)(void *, int, argon2profile *, void *);
 
 class DLLEXPORT argon2 {
 public:
-    argon2(argon2_blocks_filler_ptr filler, void *seed_memory, void *user_data);
+    argon2(argon2_blocks_prehash prehash, argon2_blocks_filler_ptr filler, argon2_blocks_posthash posthash, void *seed_memory, void *user_data);
 
-    void initialize_seeds(const argon2profile &profile);
-    void fill_blocks(const argon2profile &profile);
-    void encode_hashes(const argon2profile &profile);
+    bool initialize_seeds(const argon2profile &profile);
+    bool fill_blocks(const argon2profile &profile);
+    bool encode_hashes(const argon2profile &profile);
     
     vector<hash_data> generate_hashes(const argon2profile &profile, hash_data &input);
 
@@ -30,7 +32,10 @@ private:
     void __initial_hash(const argon2profile &profile, uint8_t *blockhash, const char *base, size_t base_sz, const char *salt, size_t salt_sz);
     void __fill_first_blocks(const argon2profile &profile, uint8_t *blockhash, int thread);
 
-    argon2_blocks_filler_ptr __filler;
+	argon2_blocks_prehash __prehash;
+	argon2_blocks_filler_ptr __filler;
+	argon2_blocks_posthash __posthash;
+
     int __threads;
 
     uint8_t *__seed_memory;

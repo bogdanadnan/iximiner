@@ -316,7 +316,7 @@ void cuda_hasher::__run(cuda_device_info *device, int thread_id) {
 #endif
 
 	void *memory = device->arguments.host_seed_memory[thread_id];
-	argon2 hash_factory(cuda_kernel_filler, memory, &thread_data);
+	argon2 hash_factory(cuda_kernel_prehasher, cuda_kernel_filler, cuda_kernel_posthasher, memory, &thread_data);
 	hash_factory.set_lane_length(2);
 
 	while(__running) {

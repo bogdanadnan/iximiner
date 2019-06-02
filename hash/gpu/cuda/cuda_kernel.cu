@@ -12,6 +12,12 @@
 #define BLOCK_SIZE_UINT4                64
 #define BLOCK_SIZE_UINT                256
 #define KERNEL_WORKGROUP_SIZE   		32
+#define ARGON2_PREHASH_DIGEST_LENGTH_UINT   16
+#define ARGON2_PREHASH_SEED_LENGTH_UINT     18
+#define IXIAN_SEED_SIZE_UINT                39
+
+
+#include "blake2b.cu"
 
 #define COMPUTE	\
 	asm ("{"	\
@@ -537,12 +543,83 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 	int idx2 = (segment == 0) ? i1_1_0 : i1_3_0;
 	int idx3 = (segment == 0) ? i1_1_1 : i1_3_1;
 
-	uint32_t *out_mem = out + hash * 4 * BLOCK_SIZE_UINT;
+	uint32_t *out_mem = out + hash * BLOCK_SIZE_UINT;
 	out_mem[idx0] = data.x;
 	out_mem[idx1] = data.y;
 	out_mem[idx2] = data.z;
 	out_mem[idx3] = data.w;
 };
+
+__global__ void prehash (
+        uint32_t *preseed,
+        uint32_t *seed) {
+    extern __shared__ uint32_t shared[]; // size = 4 * 88
+
+    int hash = blockIdx.x;
+    int id = threadIdx.x; // 16 threads
+
+    int thr_id = id % 4; // thread id in session
+    int session = id / 4; // 4 blake2b hashing session
+    int lane = session / 2;  // 2 lanes
+    int idx = session % 2; // idx in lane
+
+    uint32_t *local_mem = &shared[session * BLAKE_SHARED_MEM_UINT];
+    uint32_t *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
+    uint32_t *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
+
+    uint64_t *h = (uint64_t*)&local_mem[20];
+    uint32_t *buf = (uint32_t*)&h[10];
+    uint32_t *value = &buf[32];
+
+    int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
+    *value = 2; //lanes
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = 32; //outlen
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = 1024; //m_cost
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = 1; //t_cost
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = ARGON2_VERSION; //version
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = ARGON2_TYPE_VALUE; //type
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    *value = 92; //pw_len
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    buf_len = blake2b_update(local_preseed, 23, h, buf, buf_len, thr_id);
+    *value = 64; //salt_len
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    buf_len = blake2b_update(local_preseed + 23, 16, h, buf, buf_len, thr_id);
+    *value = 0; //secret_len
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
+    *value = 0; //ad_len
+    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+    buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
+
+    blake2b_final(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, thr_id);
+
+    if (thr_id == 0) {
+        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
+        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+    }
+
+    blake2b_digestLong(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, &local_mem[20]);
+}
+
+__global__ void posthash (
+        uint32_t *hash,
+        uint32_t *out) {
+    extern __shared__ uint32_t shared[]; // size = 88
+
+    int hash_id = blockIdx.x;
+    int thread = threadIdx.x;
+
+    uint32_t *local_hash = hash + hash_id * ARGON2_RAW_LENGTH / 4;
+    uint32_t *local_out = out + hash_id * BLOCK_SIZE_UINT;
+
+    blake2b_digestLong(local_hash, ARGON2_RAW_LENGTH / 4, local_out, ARGON2_DWORDS_IN_BLOCK, thread, shared);
+}
 
 void cuda_allocate(cuda_device_info *device, double chunks, size_t chunk_size) {
 	device->error = cudaSetDevice(device->cuda_index);
@@ -666,33 +743,57 @@ void cuda_allocate(cuda_device_info *device, double chunks, size_t chunk_size) {
 	}
 	free(segments);
 
-    size_t accessory_memory_size = device->profile_info.threads * 4 * ARGON2_BLOCK_SIZE;
-    device->error = cudaMalloc(&device->arguments.seed_memory[0], accessory_memory_size);
+	size_t preseed_memory_size = device->profile_info.threads * IXIAN_SEED_SIZE;
+    size_t seed_memory_size = device->profile_info.threads * 4 * ARGON2_BLOCK_SIZE;
+    size_t out_memory_size = device->profile_info.threads * ARGON2_BLOCK_SIZE;
+    size_t hash_memory_size = device->profile_info.threads * ARGON2_RAW_LENGTH;
+
+    device->error = cudaMalloc(&device->arguments.preseed_memory[0], preseed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating memory.";
         return;
     }
-    device->error = cudaMalloc(&device->arguments.out_memory[0], accessory_memory_size);
+    device->error = cudaMalloc(&device->arguments.seed_memory[0], seed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating memory.";
         return;
     }
-    device->error = cudaMallocHost(&device->arguments.host_seed_memory[0], accessory_memory_size);
+    device->error = cudaMalloc(&device->arguments.out_memory[0], out_memory_size);
+    if (device->error != cudaSuccess) {
+        device->error_message = "Error allocating memory.";
+        return;
+    }
+    device->error = cudaMalloc(&device->arguments.hash_memory[0], hash_memory_size);
+    if (device->error != cudaSuccess) {
+        device->error_message = "Error allocating memory.";
+        return;
+    }
+    device->error = cudaMallocHost(&device->arguments.host_seed_memory[0], preseed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating pinned memory.";
         return;
     }
-    device->error = cudaMalloc(&device->arguments.seed_memory[1], accessory_memory_size);
+    device->error = cudaMalloc(&device->arguments.preseed_memory[1], preseed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating memory.";
         return;
     }
-    device->error = cudaMalloc(&device->arguments.out_memory[1], accessory_memory_size);
+    device->error = cudaMalloc(&device->arguments.seed_memory[1], seed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating memory.";
         return;
     }
-    device->error = cudaMallocHost(&device->arguments.host_seed_memory[1], accessory_memory_size);
+    device->error = cudaMalloc(&device->arguments.out_memory[1], out_memory_size);
+    if (device->error != cudaSuccess) {
+        device->error_message = "Error allocating memory.";
+        return;
+    }
+    device->error = cudaMalloc(&device->arguments.hash_memory[1], hash_memory_size);
+    if (device->error != cudaSuccess) {
+        device->error_message = "Error allocating memory.";
+        return;
+    }
+    device->error = cudaMallocHost(&device->arguments.host_seed_memory[1], preseed_memory_size);
     if (device->error != cudaSuccess) {
         device->error_message = "Error allocating pinned memory.";
         return;
@@ -742,6 +843,14 @@ void cuda_free(cuda_device_info *device) {
         device->arguments.memory_chunk_5 = NULL;
     }
 
+    if(device->arguments.preseed_memory != NULL) {
+        for(int i=0;i<2;i++) {
+            if(device->arguments.preseed_memory[i] != NULL)
+                cudaFree(device->arguments.preseed_memory[i]);
+            device->arguments.preseed_memory[i] = NULL;
+        }
+    }
+
 	if(device->arguments.seed_memory != NULL) {
 		for(int i=0;i<2;i++) {
 			if(device->arguments.seed_memory[i] != NULL)
@@ -758,6 +867,14 @@ void cuda_free(cuda_device_info *device) {
 		}
 	}
 
+    if(device->arguments.hash_memory != NULL) {
+        for(int i=0;i<2;i++) {
+            if(device->arguments.hash_memory[i] != NULL)
+                cudaFree(device->arguments.hash_memory[i]);
+            device->arguments.hash_memory[i] = NULL;
+        }
+    }
+
 	if(device->arguments.host_seed_memory != NULL) {
 		for(int i=0;i<2;i++) {
 			if(device->arguments.host_seed_memory[i] != NULL)
@@ -769,27 +886,38 @@ void cuda_free(cuda_device_info *device) {
 	cudaDeviceReset();
 }
 
+bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, void *user_data) {
+    cuda_gpumgmt_thread_data *gpumgmt_thread = (cuda_gpumgmt_thread_data *)user_data;
+    cuda_device_info *device = gpumgmt_thread->device;
+    cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
+
+    size_t work_items = 8 * profile->thr_cost;
+
+    gpumgmt_thread->lock();
+
+    device->error = cudaMemcpyAsync(device->arguments.preseed_memory[gpumgmt_thread->thread_id], memory, threads * IXIAN_SEED_SIZE, cudaMemcpyHostToDevice, stream);
+    if (device->error != cudaSuccess) {
+        device->error_message = "Error writing to gpu memory.";
+        gpumgmt_thread->unlock();
+        return false;
+    }
+
+    prehash <<<threads, work_items, 4 * BLAKE_SHARED_MEM, stream>>> (
+                device->arguments.preseed_memory[gpumgmt_thread->thread_id],
+                device->arguments.seed_memory[gpumgmt_thread->thread_id]);
+
+    return true;
+}
+
 void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void *user_data) {
 	cuda_gpumgmt_thread_data *gpumgmt_thread = (cuda_gpumgmt_thread_data *)user_data;
 	cuda_device_info *device = gpumgmt_thread->device;
 	cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
 
-	int mem_seed_count = profile->thr_cost;
-	size_t work_items;
-
 	uint32_t memsize = (uint32_t)argon2profile_default->memsize;
 	uint32_t parallelism = argon2profile_default->thr_cost;
 
-	work_items = KERNEL_WORKGROUP_SIZE * parallelism;
-
-	gpumgmt_thread->lock();
-
-	device->error = cudaMemcpyAsync(device->arguments.seed_memory[gpumgmt_thread->thread_id], memory, threads * 2 * mem_seed_count * ARGON2_BLOCK_SIZE, cudaMemcpyHostToDevice, stream);
-	if (device->error != cudaSuccess) {
-		device->error_message = "Error writing to gpu memory.";
-		gpumgmt_thread->unlock();
-		return NULL;
-	}
+    size_t work_items = KERNEL_WORKGROUP_SIZE * parallelism;
 
 	fill_blocks <<<threads, work_items, 0, stream>>> ((uint32_t*)device->arguments.memory_chunk_0,
 			(uint32_t*)device->arguments.memory_chunk_1,
@@ -803,11 +931,25 @@ void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void
 			device->arguments.segments,
 			memsize, device->profile_info.threads_per_chunk, gpumgmt_thread->threads_idx);
 
-	device->error = cudaMemcpyAsync(memory, device->arguments.out_memory[gpumgmt_thread->thread_id], threads * 2 * mem_seed_count * ARGON2_BLOCK_SIZE, cudaMemcpyDeviceToHost, stream);
+	return memory;
+}
+
+bool cuda_kernel_posthasher(void *memory, int threads, argon2profile *profile, void *user_data) {
+	cuda_gpumgmt_thread_data *gpumgmt_thread = (cuda_gpumgmt_thread_data *)user_data;
+	cuda_device_info *device = gpumgmt_thread->device;
+	cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
+
+    size_t work_items = 4;
+
+	posthash <<<threads, work_items, BLAKE_SHARED_MEM, stream>>> (
+            device->arguments.hash_memory[gpumgmt_thread->thread_id],
+            device->arguments.out_memory[gpumgmt_thread->thread_id]);
+
+	device->error = cudaMemcpyAsync(memory, device->arguments.hash_memory[gpumgmt_thread->thread_id], threads * ARGON2_RAW_LENGTH, cudaMemcpyDeviceToHost, stream);
 	if (device->error != cudaSuccess) {
 		device->error_message = "Error reading gpu memory.";
 		gpumgmt_thread->unlock();
-		return NULL;
+		return false;
 	}
 
 	while(cudaStreamQuery(stream) != cudaSuccess) {
@@ -816,6 +958,7 @@ void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void
 	}
 
 	gpumgmt_thread->unlock();
+
 
 	return memory;
 }

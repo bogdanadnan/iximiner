@@ -186,7 +186,7 @@ void cpu_hasher::__run() {
         return;
     }
 
-    argon2 hash_factory(__argon2_blocks_filler_ptr, mem, NULL);
+    argon2 hash_factory(NULL, __argon2_blocks_filler_ptr, NULL, mem, NULL);
 
     bool should_realloc = false;
 
