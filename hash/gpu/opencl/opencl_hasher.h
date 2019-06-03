@@ -24,8 +24,10 @@ struct opencl_kernel_arguments {
     cl_mem memory_chunk_5;
     cl_mem address;
     cl_mem segments;
+    cl_mem preseed_memory[2];
     cl_mem seed_memory[2];
     cl_mem out_memory[2];
+    cl_mem hash_memory[2];
 };
 
 struct argon2profile_info {
@@ -45,7 +47,9 @@ struct opencl_device_info {
     cl_command_queue queue;
 
     cl_program program;
-	cl_kernel kernel;
+    cl_kernel kernel_prehash;
+    cl_kernel kernel_fill_blocks;
+    cl_kernel kernel_posthash;
 
     int device_index;
 
