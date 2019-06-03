@@ -791,7 +791,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	out_mem[local_id + 64] = out_data1;
 };
 
-__global__ void prehash (
+__kernel void prehash (
         __global uint *preseed,
         __global uint *seed) {
     __local uint shared[4 * BLAKE_SHARED_MEM_UINT];
@@ -849,7 +849,7 @@ __global__ void prehash (
     blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, &local_mem[20]);
 }
 
-__global__ void posthash (
+__kernel void posthash (
         __global uint *hash,
         __global uint *out) {
     __local uint shared[BLAKE_SHARED_MEM_UINT];
