@@ -712,7 +712,7 @@ bool opencl_kernel_posthasher(void *memory, int threads, argon2profile *profile,
 
     clSetKernelArg(device->kernel_posthash, 0, sizeof(device->arguments.hash_memory[gpumgmt_thread->thread_id]), &device->arguments.hash_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_posthash, 1, sizeof(device->arguments.out_memory[gpumgmt_thread->thread_id]), &device->arguments.out_memory[gpumgmt_thread->thread_id]);
-    clSetKernelArg(device->kernel_prehash, 2, 480, NULL);
+    clSetKernelArg(device->kernel_posthash, 2, 480, NULL);
 
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_posthash, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {
