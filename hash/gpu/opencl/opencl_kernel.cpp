@@ -796,8 +796,9 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 
 __kernel void prehash (
         __global uint *preseed,
-        __global uint *seed) {
-    __local uint shared[4 * BLAKE_SHARED_MEM_UINT];
+        __global uint *seed,
+        __local uint *shared) {
+//    __local uint shared[4 * BLAKE_SHARED_MEM_UINT];
 
 	int hash = get_group_id(0);
 	int id = get_local_id(0);
@@ -854,8 +855,9 @@ __kernel void prehash (
 
 __kernel void posthash (
         __global uint *hash,
-        __global uint *out) {
-    __local uint shared[BLAKE_SHARED_MEM_UINT];
+        __global uint *out,
+        __local uint *shared) {
+//    __local uint shared[BLAKE_SHARED_MEM_UINT];
 
 	int hash_id = get_group_id(0);
 	int thread = get_local_id(0);
