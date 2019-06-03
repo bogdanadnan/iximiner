@@ -22,6 +22,7 @@ hasher::hasher() {
 	__height = 0;
     __block_checksum = "";
     __solver_address = "";
+    __base = "";
 
     __pause = false;
     __is_running = false;
@@ -72,6 +73,7 @@ void hasher::set_input(uint64_t height, const string &block_checksum, const stri
     __height = height;
     __block_checksum = block_checksum;
     __solver_address = solver_address;
+    __base = __make_base(block_checksum, solver_address);
     __pause = (recommendation == "pause");
     __input_mutex.unlock();
 
@@ -91,16 +93,18 @@ void hasher::set_input(uint64_t height, const string &block_checksum, const stri
 hash_data hasher::_get_input() {
     string tmp_block_checksum = "";
     string tmp_solver_address = "";
+    string tmp_base = "";
     __input_mutex.lock();
     tmp_block_checksum = __block_checksum;
     tmp_solver_address = __solver_address;
+    tmp_base = __base;
     __input_mutex.unlock();
 
     hash_data new_hash;
     new_hash.nonce = new_hash.hash = "";
     new_hash.block_checksum = tmp_block_checksum;
     new_hash.solver_address = tmp_solver_address;
-    new_hash.base = __make_base(new_hash.block_checksum, new_hash.solver_address);
+    new_hash.base = tmp_base;
 
     return new_hash;
 }

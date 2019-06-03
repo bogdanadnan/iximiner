@@ -97,6 +97,7 @@ private:
     uint64_t __height;
     string __block_checksum;
     string __solver_address;
+    string __base;
     bool __pause;
     bool __is_running;
 
