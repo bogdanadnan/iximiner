@@ -8,8 +8,10 @@
 #define ARGON2_RAW_LENGTH               32
 #define ARGON2_TYPE_VALUE               2
 #define ARGON2_VERSION                  0x13
+#define IXIAN_SEED_SIZE                 156
 
 #define ARGON2_BLOCK_SIZE               1024
+#define ARGON2_DWORDS_IN_BLOCK          ARGON2_BLOCK_SIZE / 4
 #define ARGON2_QWORDS_IN_BLOCK          ARGON2_BLOCK_SIZE / 8
 #define ARGON2_OWORDS_IN_BLOCK          ARGON2_BLOCK_SIZE / 16
 #define ARGON2_HWORDS_IN_BLOCK          ARGON2_BLOCK_SIZE / 32

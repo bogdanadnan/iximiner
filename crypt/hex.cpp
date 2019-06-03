@@ -7,22 +7,24 @@
 #include "hex.h"
 
 void hex::encode(const unsigned char *input, int input_size, char *output) {
-    for(int i=0; i<input_size; i++) {
-        sprintf(output, "%02x", input[i]);
-        output+=2;
+    for ( int i=0; i<input_size; i++ ) {
+        char b1= *input >> 4;   // hi nybble
+        char b2= *input & 0x0f; // lo nybble
+        b1+='0'; if (b1>'9') b1 += 7;  // gap between '9' and 'A'
+        b2+='0'; if (b2>'9') b2 += 7;
+        *(output++)= b1;
+        *(output++) = b2;
+        input++;
     }
+    *output = 0;
 }
 
 int hex::decode(const char *input, unsigned char *output, int output_size) {
-    char buff[3];
-    size_t input_size = strlen(input);
-    if(output_size < input_size / 2)
-        return -1;
-
-    for(int i=0; i<input_size; i+=2) {
-        strncpy(buff, &input[i], 2);
-        output[i/2] = strtoul(buff, NULL, 16);
+    size_t in_len = strlen(input);
+    for ( int i=0; i<in_len; i+=2 ) {
+        unsigned char b1= input[i] -'0'; if (b1>9) b1 -= 7;
+        unsigned char b2= input[i+1] -'0'; if (b2>9) b2 -= 7;
+        *(output++) = (b1<<4) + b2;  // <<4 multiplies by 16
     }
-
-    return input_size / 2;
+    return in_len / 2;
 }

@@ -666,7 +666,7 @@ void opencl_hasher::__run(opencl_device_info *device, int thread_id) {
     thread_data.device = device;
     thread_data.thread_id = thread_id;
 
-    argon2 hash_factory(opencl_kernel_filler, memory, &thread_data);
+    argon2 hash_factory(NULL, opencl_kernel_filler, NULL, memory, &thread_data);
     hash_factory.set_lane_length(2);
 
     while(__running) {
