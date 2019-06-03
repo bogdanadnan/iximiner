@@ -52,3 +52,10 @@ string format_seconds(uint64_t seconds) {
 	ss << std::setw(2) << std::setfill('0') << hours << ":" << std::setw(2) << std::setfill('0') << minutes << ":" << std::setw(2) << std::setfill('0') << reminder;
 	return ss.str();
 }
+
+string format_hashrate(int hashrate) {
+    double khs = (double)hashrate / 1000.0;
+    char buff[20];
+    sprintf(buff, "%.1fk", khs);
+    return string(buff);
+}

@@ -268,17 +268,17 @@ bool miner::__display_report() {
         hash_count += (*it)->get_hash_count();
     }
 
-    header << "|TotalHR";
-    log << "|" << setw(7) << (int)hash_rate;
+    header << "| TotalHR";
+    log << "|" << setw(8) << format_hashrate((int)hash_rate);
     for (vector<hasher *>::iterator it = hashers.begin(); it != hashers.end(); ++it) {
         map<int, device_info> devices = (*it)->get_device_infos();
         for(map<int, device_info>::iterator d = devices.begin(); d != devices.end(); ++d) {
-            header << "|" << ((d->first < 10) ? " " : "") << (*it)->get_type() << d->first;
-            log << "|" << setw(5) << (int)(d->second.hashrate);
+            header << "|" << ((d->first < 10) ? "  " : " ") << (*it)->get_type() << d->first;
+            log << "|" << setw(6) << format_hashrate((int)(d->second.hashrate));
         }
     }
-    header << "|Avg   |     Time|Acc   |Rej   |Block|";
-    log << "|" << setw(6) << (int)avg_hash_rate
+    header << "|    Avg|     Time|Acc   |Rej   |Block|";
+    log << "|" << setw(7) << format_hashrate((int)avg_hash_rate)
             << "|" << setw(9) << format_seconds(total_time)
             << "|" << setw(6) << __confirmed
             << "|" << setw(6) << __rejected

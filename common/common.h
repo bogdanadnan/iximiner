@@ -58,5 +58,6 @@ DLLEXPORT vector<string> get_files(string folder);
 DLLEXPORT bool is_number(const string &s);
 DLLEXPORT string generate_uid(size_t length);
 DLLEXPORT string format_seconds(uint64_t seconds);
+DLLEXPORT string format_hashrate(int hashrate);
 
 #endif //IXIMINER_COMMON_H
