@@ -23,6 +23,9 @@ string opencl_kernel = R"OCL(
 
 #define ARGON2_RAW_LENGTH           8
 
+#define ARGON2_TYPE_VALUE               2
+#define ARGON2_VERSION                  0x13
+
 #define BLOCK_BYTES	32
 #define OUT_BYTES	16
 
@@ -834,10 +837,10 @@ __kernel void prehash (
     buf_len = blake2b_update_global(local_preseed + 23, 16, h, buf, buf_len, shfl, thr_id);
     *value = 0; //secret_len
     buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_local(NULL, 0, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
     *value = 0; //ad_len
     buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_local(NULL, 0, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
 
     blake2b_final_local(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, shfl, thr_id);
 
@@ -846,7 +849,7 @@ __kernel void prehash (
         local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
     }
 
-    blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, &local_mem[20]);
+    blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, (__local ulong *)&local_mem[20]);
 }
 
 __kernel void posthash (
@@ -860,7 +863,7 @@ __kernel void posthash (
     __global uint *local_hash = hash + hash_id * ARGON2_RAW_LENGTH;
     __global uint *local_out = out + hash_id * BLOCK_SIZE_UINT;
 
-    blake2b_digestLong_global(local_hash, ARGON2_RAW_LENGTH, local_out, ARGON2_DWORDS_IN_BLOCK, thread, shared);
+    blake2b_digestLong_global(local_hash, ARGON2_RAW_LENGTH, local_out, ARGON2_DWORDS_IN_BLOCK, thread, (__local ulong *)shared);
 }
 
 )OCL";
