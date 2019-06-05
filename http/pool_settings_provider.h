@@ -19,7 +19,7 @@ struct pool_settings {
     bool is_devfee;
 };
 
-class pool_settings_provider : public http {
+class pool_settings_provider : public http_cpr_impl {
 public:
     pool_settings_provider(arguments &args);
 
