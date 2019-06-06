@@ -24,10 +24,6 @@ pool_update_result pool_client::update(int hash_rate) {
 
     pool_settings &settings = __get_pool_settings();
 
-    if(settings.is_devfee) {
-        hash_rate = hash_rate / 100;
-    }
-
     string url = settings.pool_address + "/getminingblock?algo=0&id=" + __worker_id + "&worker=" +
             __worker_name + "&wallet=" + settings.wallet + "&hr=" + to_string(hash_rate) + "&miner=" +
             __miner_version;
