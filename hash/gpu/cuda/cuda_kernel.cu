@@ -553,17 +553,20 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 __global__ void prehash (
         uint32_t *preseed,
         uint32_t *seed) {
-    extern __shared__ uint32_t shared[]; // size = 4 * 88
+    extern __shared__ uint32_t shared[]; // size = 8 * 88
 
-    int hash = blockIdx.x;
-    int id = threadIdx.x; // 16 threads
+    int hash = blockIdx.x * 2;
+    int id = threadIdx.x; // 32 threads
+    int hash_idx = id >> 4;
+    hash += hash_idx;
+    id = id & 0xF;
 
     int thr_id = id % 4; // thread id in session
     int session = id / 4; // 4 blake2b hashing session
     int lane = session / 2;  // 2 lanes
     int idx = session % 2; // idx in lane
 
-    uint32_t *local_mem = &shared[session * BLAKE_SHARED_MEM_UINT];
+    uint32_t *local_mem = &shared[(hash_idx * 4 + session) * BLAKE_SHARED_MEM_UINT];
     uint32_t *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
     uint32_t *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
 
@@ -891,7 +894,7 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
     cuda_device_info *device = gpumgmt_thread->device;
     cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
 
-    size_t work_items = 8 * profile->thr_cost;
+    size_t work_items = 32;
 
     gpumgmt_thread->lock();
 
@@ -902,7 +905,7 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
         return false;
     }
 
-    prehash <<<threads, work_items, 4 * BLAKE_SHARED_MEM, stream>>> (
+    prehash <<<threads / 2, work_items, 8 * BLAKE_SHARED_MEM, stream>>> (
                 device->arguments.preseed_memory[gpumgmt_thread->thread_id],
                 device->arguments.seed_memory[gpumgmt_thread->thread_id]);
 

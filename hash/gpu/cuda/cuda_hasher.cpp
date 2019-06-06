@@ -243,8 +243,9 @@ bool cuda_hasher::__setup_device_info(cuda_device_info *device, double intensity
     }
 
     device->profile_info.threads = (uint32_t)(max_threads * intensity / 100.0);
-    if(max_threads > 0 && device->profile_info.threads == 0 && intensity > 0)
-        device->profile_info.threads = 1;
+	device->profile_info.threads = (device->profile_info.threads / 2) * 2; // make it divisible by 2
+	if(max_threads > 0 && device->profile_info.threads == 0 && intensity > 0)
+        device->profile_info.threads = 2;
 
     chunks = (double)device->profile_info.threads / (double)device->profile_info.threads_per_chunk;
 
