@@ -205,8 +205,9 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
     }
 
     device->profile_info.threads = (uint32_t)(max_threads * intensity / 100.0);
+    device->profile_info.threads = (device->profile_info.threads / 4) * 4; // make it divisible by 4
     if(max_threads > 0 && device->profile_info.threads == 0 && intensity > 0)
-        device->profile_info.threads = 1;
+        device->profile_info.threads = 4;
 
     double counter = (double)device->profile_info.threads / (double)device->profile_info.threads_per_chunk;
     size_t allocated_mem_for_current_chunk = 0;
@@ -651,8 +652,8 @@ bool opencl_kernel_prehasher(void *memory, int threads, argon2profile *profile, 
 
     cl_int error;
 
-    size_t total_work_items = threads * 8 * profile->thr_cost;
-    size_t local_work_items = 8 * profile->thr_cost;
+    size_t total_work_items = 64 * threads / 4;
+    size_t local_work_items = 64;
 
     device->device_lock.lock();
 
@@ -666,7 +667,7 @@ bool opencl_kernel_prehasher(void *memory, int threads, argon2profile *profile, 
 
     clSetKernelArg(device->kernel_prehash, 0, sizeof(device->arguments.preseed_memory[gpumgmt_thread->thread_id]), &device->arguments.preseed_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_prehash, 1, sizeof(device->arguments.seed_memory[gpumgmt_thread->thread_id]), &device->arguments.seed_memory[gpumgmt_thread->thread_id]);
-    clSetKernelArg(device->kernel_prehash, 2, 4 * sizeof(cl_ulong) * 60, NULL);
+    clSetKernelArg(device->kernel_prehash, 2, 16 * sizeof(cl_ulong) * 60, NULL);
 
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_prehash, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {
