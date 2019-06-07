@@ -46,7 +46,7 @@ namespace json {
     {
         union BackingData {
             BackingData( double d ) : Float( d ){}
-            BackingData( long   l ) : Int( l ){}
+            BackingData( unsigned long long   l ) : Int( l ){}
             BackingData( bool   b ) : Bool( b ){}
             BackingData( string s ) : String( new string( s ) ){}
             BackingData()           : Int( 0 ){}
@@ -55,7 +55,7 @@ namespace json {
             map<string,JSON>   *Map;
             string             *String;
             double              Float;
-            long                Int;
+            unsigned long long           Int;
             bool                Bool;
         } Internal;
 
@@ -185,7 +185,7 @@ namespace json {
         JSON( T b, typename enable_if<is_same<T,bool>::value>::type* = 0 ) : Internal( b ), Type( Class::Boolean ){}
 
         template <typename T>
-        JSON( T i, typename enable_if<is_integral<T>::value && !is_same<T,bool>::value>::type* = 0 ) : Internal( (long)i ), Type( Class::Integral ){}
+        JSON( T i, typename enable_if<is_integral<T>::value && !is_same<T,bool>::value>::type* = 0 ) : Internal( (unsigned long long)i ), Type( Class::Integral ){}
 
         template <typename T>
         JSON( T f, typename enable_if<is_floating_point<T>::value>::type* = 0 ) : Internal( (double)f ), Type( Class::Floating ){}
@@ -297,8 +297,8 @@ namespace json {
             return ok ? Internal.Float : 0.0;
         }
 
-        long ToInt() const { bool b; return ToInt( b ); }
-        long ToInt( bool &ok ) const {
+        unsigned long long ToInt() const { bool b; return ToInt( b ); }
+        unsigned long long ToInt( bool &ok ) const {
             ok = (Type == Class::Integral);
             return ok ? Internal.Int : 0;
         }
@@ -584,9 +584,9 @@ namespace json {
                 Number = std::stod( val ) * std::pow( 10, exp );
             else {
                 if( !exp_str.empty() )
-                    Number = std::stol( val ) * std::pow( 10, exp );
+                    Number = std::strtoull( val.c_str(), NULL, 10 ) * std::pow( 10, exp );
                 else
-                    Number = std::stol( val );
+                    Number = std::strtoull( val.c_str(), NULL, 10 );
             }
             return std::move( Number );
         }

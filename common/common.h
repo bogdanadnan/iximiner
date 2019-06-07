@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 04/08/2018.
 //
 
-#ifndef ARIOMINER_COMMON_H
-#define ARIOMINER_COMMON_H
+#ifndef IXIMINER_COMMON_H
+#define IXIMINER_COMMON_H
 
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +43,10 @@
 #include <win64.h>
 #endif
 
+#ifdef __APPLE__
+#include "../macosx/cpu_affinity.h"
+#endif
+
 #include <config.h>
 
 using namespace std;
@@ -54,7 +58,6 @@ DLLEXPORT vector<string> get_files(string folder);
 DLLEXPORT bool is_number(const string &s);
 DLLEXPORT string generate_uid(size_t length);
 DLLEXPORT string format_seconds(uint64_t seconds);
+DLLEXPORT string format_hashrate(int hashrate);
 
-#define GOLD_RESULT         240
-
-#endif //ARIOMINER_COMMON_H
+#endif //IXIMINER_COMMON_H

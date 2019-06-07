@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 15/02/2019.
 //
 
-#ifndef ARIOMINER_MINER_API_H
-#define ARIOMINER_MINER_API_H
+#ifndef IXIMINER_MINER_API_H
+#define IXIMINER_MINER_API_H
 
 #include "../http/civetweb/CivetServer.h"
 #include "../common/common.h"
@@ -24,5 +24,4 @@ private:
     miner &__miner;
 };
 
-
-#endif //ARIOMINER_MINER_API_H
+#endif //IXIMINER_MINER_API_H

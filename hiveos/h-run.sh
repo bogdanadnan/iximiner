@@ -15,6 +15,6 @@ while true; do
 done
 
 mkdir -p $CUSTOM_LOG_FOLDER
-echo -e "Running ${CYAN}ariominer${NOCOLOR}" | tee ${CUSTOM_LOG_FOLDER}/${CUSTOM_NAME}.log
+echo -e "Running ${CYAN}iximiner${NOCOLOR}" | tee ${CUSTOM_LOG_FOLDER}/${CUSTOM_NAME}.log
 
-./ariominer --mode miner $(< $CUSTOM_NAME.conf)$@ 2>&1 | tee ${CUSTOM_LOG_FOLDER}/${CUSTOM_NAME}.log
+./iximiner --mode miner $(< $CUSTOM_NAME.conf)$@ 2>&1 | tee ${CUSTOM_LOG_FOLDER}/${CUSTOM_NAME}.log

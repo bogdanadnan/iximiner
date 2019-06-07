@@ -4,6 +4,7 @@
 
 #include "../common/common.h"
 #include "../crypt/base64.h"
+#include "../crypt/hex.h"
 #include "../crypt/random_generator.h"
 #include "../app/arguments.h"
 
@@ -18,18 +19,18 @@ hasher::hasher() {
     _description = "";
 	_priority = 0;
 
-    __public_key = "";
-    __blk = "";
-    __difficulty = "";
+	__height = 0;
+    __block_checksum = "";
+    __solver_address = "";
+    __base = "";
+
     __pause = false;
     __is_running = false;
-    __argon2profile = argon2profile_default;
 
     __begin_round_time = __hashrate_time = microseconds();
     __hashrate = 0;
 
-    __total_hash_count_cblocks = 0;
-    __total_hash_count_gblocks = 0;
+    __total_hash_count = 0;
 
     __hash_count = 0;
 
@@ -65,31 +66,21 @@ string hasher::get_info() {
     return _description;
 }
 
-void hasher::set_input(const string &public_key, const string &blk, const string &difficulty, const string &argon2profile_string, const string &recommendation) {
-    bool profile_change = false;
+void hasher::set_input(uint64_t height, const string &block_checksum, const string &solver_address, const string &recommendation) {
+    bool new_block = false;
     __input_mutex.lock();
-    __public_key = public_key;
-    __blk = blk;
-    __difficulty = difficulty;
-    if(argon2profile_string == "4_4_16384") {
-        if(strcmp(__argon2profile->profile_name, "1_1_524288") == 0) {
-            __argon2profile = &argon2profile_4_4_16384;
-            profile_change = true;
-        }
-    }
-    else {
-        if(strcmp(__argon2profile->profile_name, "4_4_16384") == 0) {
-            __argon2profile = &argon2profile_1_1_524288;
-            profile_change = true;
-        }
-    }
+    new_block = height != __height;
+    __height = height;
+    __block_checksum = block_checksum;
+    __solver_address = solver_address;
+    __base = __make_base(block_checksum, solver_address);
     __pause = (recommendation == "pause");
     __input_mutex.unlock();
 
-    if(profile_change) {
+    if(new_block) {
         uint64_t timestamp = microseconds();
         __hashes_mutex.lock();
-        __hash_timings.push_back(hash_timing{timestamp - __begin_round_time, __hash_count, (argon2profile_string == "4_4_16384" ? 0 : 1)});
+        __hash_timings.push_back(hash_timing{timestamp - __begin_round_time, __hash_count});
         __hash_count = 0;
         __hashes_mutex.unlock();
 
@@ -100,25 +91,21 @@ void hasher::set_input(const string &public_key, const string &blk, const string
 }
 
 hash_data hasher::_get_input() {
-    string tmp_public_key = "";
-    string tmp_blk = "";
-    string tmp_difficulty = "";
-    string profile_name = "";
+    string tmp_block_checksum = "";
+    string tmp_solver_address = "";
+    string tmp_base = "";
     __input_mutex.lock();
-    tmp_public_key = __public_key;
-    tmp_blk = __blk;
-    tmp_difficulty = __difficulty;
-    profile_name = __argon2profile->profile_name;
+    tmp_block_checksum = __block_checksum;
+    tmp_solver_address = __solver_address;
+    tmp_base = __base;
     __input_mutex.unlock();
 
     hash_data new_hash;
-    new_hash.nonce = __make_nonce();
-    new_hash.base = tmp_public_key + "-" + new_hash.nonce + "-" + tmp_blk + "-" + tmp_difficulty;
-    new_hash.salt = "";
-    new_hash.block = tmp_blk;
-    new_hash.profile_name = profile_name;
-//    new_hash.base = "PZ8Tyr4Nx8MHsRAGMpZmZ6TWY63dXWSCy7AEg3h9oYjeR74yj73q3gPxbxq9R3nxSSUV4KKgu1sQZu9Qj9v2q2HhT5H3LTHwW7HzAA28SjWFdzkNoovBMncD-sauULo1zM4tt9DhGEnO8qPe5nlzItJwwIKiIcAUDg-4KhqbBhShBf36zYeen943tS6KhgFmQixtUoVbf2egtBmD6j3NQtcueEBite2zjzdpK2ShaA28icRfJM9yPUQ6azN-56262626";
-//    new_hash.salt = "NSHFFAg.iATJ0sfM";
+    new_hash.nonce = new_hash.hash = "";
+    new_hash.block_checksum = tmp_block_checksum;
+    new_hash.solver_address = tmp_solver_address;
+    new_hash.base = tmp_base;
+
     return new_hash;
 }
 
@@ -131,42 +118,17 @@ double hasher::get_current_hash_rate() {
     return hashrate;
 }
 
-double hasher::get_avg_hash_rate_cblocks() {
+double hasher::get_avg_hash_rate() {
     size_t total_hashes = 0;
     uint64_t total_time = 0;
     for(list<hash_timing>::iterator it = __hash_timings.begin(); it != __hash_timings.end();it++) {
-        if(it->profile == 0) {
-            total_time += it->time_info;
-            total_hashes += it->hash_count;
-        }
+        total_time += it->time_info;
+        total_hashes += it->hash_count;
     }
-    if(strcmp(_get_argon2profile()->profile_name, "1_1_524288") == 0) {
-        total_time += (microseconds() - __begin_round_time);
-        __hashes_mutex.lock();
-        total_hashes += __hash_count;
-        __hashes_mutex.unlock();
-    }
-    if(total_time == 0)
-        return 0;
-    else
-        return total_hashes / (total_time / 1000000.0);
-}
-
-double hasher::get_avg_hash_rate_gblocks() {
-    size_t total_hashes = 0;
-    uint64_t total_time = 0;
-    for(list<hash_timing>::iterator it = __hash_timings.begin(); it != __hash_timings.end();it++) {
-        if(it->profile == 1) {
-            total_time += it->time_info;
-            total_hashes += it->hash_count;
-        }
-    }
-    if(strcmp(_get_argon2profile()->profile_name, "4_4_16384") == 0) {
-        total_time += (microseconds() - __begin_round_time);
-        __hashes_mutex.lock();
-        total_hashes += __hash_count;
-        __hashes_mutex.unlock();
-    }
+    total_time += (microseconds() - __begin_round_time);
+    __hashes_mutex.lock();
+    total_hashes += __hash_count;
+    __hashes_mutex.unlock();
 
     if(total_time == 0)
         return 0;
@@ -174,12 +136,8 @@ double hasher::get_avg_hash_rate_gblocks() {
         return total_hashes / (total_time / 1000000.0);
 }
 
-uint32_t hasher::get_hash_count_cblocks() {
-    return __total_hash_count_cblocks;
-}
-
-uint32_t hasher::get_hash_count_gblocks() {
-    return __total_hash_count_gblocks;
+uint32_t hasher::get_hash_count() {
+    return __total_hash_count;
 }
 
 vector<hash_data> hasher::get_hashes() {
@@ -196,12 +154,7 @@ void hasher::_store_hash(const hash_data &hash, int device_id) {
 	__hashes.push_back(hash);
 	__hash_count++;
     __device_infos[device_id].hashcount++;
-	if (hash.profile_name == "1_1_524288") {
-		__total_hash_count_cblocks++;
-	}
-	else {
-		__total_hash_count_gblocks++;
-	}
+    __total_hash_count++;
 
 	__update_hashrate();
 
@@ -209,43 +162,33 @@ void hasher::_store_hash(const hash_data &hash, int device_id) {
 }
 
 void hasher::_store_hash(const vector<hash_data> &hashes, int device_id) {
-	if (hashes.size() == 0) return;
+    int hash_sz = hashes.size();
+	if (hash_sz == 0) return;
 
 	__hashes_mutex.lock();
 	__hashes.insert(__hashes.end(), hashes.begin(), hashes.end());
-	__hash_count+=hashes.size();
-	__device_infos[device_id].hashcount += hashes.size();
 
-	if (hashes[0].profile_name == "1_1_524288") {
-		__total_hash_count_cblocks+=hashes.size();
-	}
-	else {
-		__total_hash_count_gblocks+=hashes.size();
-	}
+	__hash_count += hash_sz;
+	__device_infos[device_id].hashcount += hash_sz;
+
+    __total_hash_count += hash_sz;
 
 	__update_hashrate();
 
 //	for(int i=0;i<hashes.size();i++)
 //	    LOG(hashes[i].hash);
+
 	__hashes_mutex.unlock();
 }
 
 void hasher::__update_hashrate() {
     uint64_t timestamp = microseconds();
 
-    if (timestamp - __hashrate_time > 5000000) { //we calculate hashrate every 5 seconds
-        string profile;
-        __input_mutex.lock();
-        profile = __argon2profile->profile_name;
-        __input_mutex.unlock();
-
+    if (timestamp - __hashrate_time > 10000000) { //we calculate hashrate every 10 seconds
         size_t hashcount = 0;
         for(map<int, device_info>::iterator iter = __device_infos.begin(); iter != __device_infos.end(); ++iter) {
             hashcount += iter->second.hashcount;
-            if(profile == "1_1_524288")
-                iter->second.cblock_hashrate = iter->second.hashcount / ((timestamp - __hashrate_time) / 1000000.0);
-            else
-                iter->second.gblock_hashrate = iter->second.hashcount / ((timestamp - __hashrate_time) / 1000000.0);
+            iter->second.hashrate = iter->second.hashcount / ((timestamp - __hashrate_time) / 1000000.0);
             iter->second.hashcount = 0;
         }
         __hashrate = hashcount / ((timestamp - __hashrate_time) / 1000000.0);
@@ -266,15 +209,6 @@ vector<hasher *> hasher::get_active_hashers() {
     return filtered;
 }
 
-argon2profile *hasher::_get_argon2profile() {
-    argon2profile * profile = NULL;
-    __input_mutex.lock();
-    profile = __argon2profile;
-    __input_mutex.unlock();
-
-    return profile;
-}
-
 bool hasher::_should_pause() {
     bool pause = false;
     __input_mutex.lock();
@@ -284,14 +218,20 @@ bool hasher::_should_pause() {
     return pause;
 }
 
-string hasher::__make_nonce() {
-    char input[32];
-    char output[50];
+string hasher::__make_base(const string &block_checksum, const string &solver_address) {
+    unsigned char blk[256];
+    unsigned char slv[256];
+    char output[512];
+    int blk_sz = base64::decode(block_checksum.c_str(), (char *)blk, 256);
+    int slv_sz = base64::decode(solver_address.c_str(), (char *)slv, 256);
 
-    random_generator::instance().get_random_data(input, 32);
+    unsigned char input[512];
+    memcpy(input, blk, blk_sz);
+    memcpy(input + blk_sz, slv, slv_sz);
 
-    base64::encode(input, 32, output);
-    return regex_replace (string(output), regex("[^a-zA-Z0-9]"), "");
+    hex::encode(input, blk_sz + slv_sz, output);
+
+    return string(output);
 }
 
 vector<hasher*> *hasher::__registered_hashers = NULL;

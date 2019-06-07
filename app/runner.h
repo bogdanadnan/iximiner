@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 30/08/2018.
 //
 
-#ifndef ARIOMINER_RUNNER_H
-#define ARIOMINER_RUNNER_H
+#ifndef IXIMINER_RUNNER_H
+#define IXIMINER_RUNNER_H
 
 class runner {
 public:
@@ -11,4 +11,4 @@ public:
     virtual void stop() = 0;
 };
 
-#endif //ARIOMINER_RUNNER_H
+#endif //IXIMINER_RUNNER_H

@@ -7,6 +7,8 @@
 #include <dirent.h>
 
 uint64_t microseconds() {
+//	return (1000000 * time(NULL)); // seconds precision is good enough
+
     struct timeval time;
     gettimeofday(&time, NULL);
     return (uint64_t)time.tv_sec * 1000000 + (uint64_t)time.tv_usec;
@@ -49,4 +51,11 @@ string format_seconds(uint64_t seconds) {
 	stringstream ss;
 	ss << std::setw(2) << std::setfill('0') << hours << ":" << std::setw(2) << std::setfill('0') << minutes << ":" << std::setw(2) << std::setfill('0') << reminder;
 	return ss.str();
+}
+
+string format_hashrate(int hashrate) {
+    double khs = (double)hashrate / 1000.0;
+    char buff[20];
+    sprintf(buff, "%.1fk", khs);
+    return string(buff);
 }

@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 29/08/2018.
 //
 
-#ifndef ARIOMINER_AUTOTUNE_H
-#define ARIOMINER_AUTOTUNE_H
+#ifndef IXIMINER_AUTOTUNE_H
+#define IXIMINER_AUTOTUNE_H
 
 #include "../app/runner.h"
 
@@ -20,4 +20,4 @@ private:
 };
 
 
-#endif //ARIOMINER_AUTOTUNE_H
+#endif //IXIMINER_AUTOTUNE_H

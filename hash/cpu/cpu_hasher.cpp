@@ -65,8 +65,7 @@ bool cpu_hasher::configure(arguments &args) {
     }
 
     _intensity = intensity;
-    __device_info.cblocks_intensity = intensity;
-    __device_info.gblocks_intensity = intensity;
+    __device_info.intensity = intensity;
 
     __threads_count = __threads_count * _intensity / 100;
     if (__threads_count == 0)
@@ -76,8 +75,21 @@ bool cpu_hasher::configure(arguments &args) {
 
     __running = true;
     _update_running_status(__running);
+    bool affinity_error = false;
     for(int i=0;i<__threads_count;i++) {
 		__runners.push_back(new thread([&]() { this->__run(); }));
+#ifndef WIN32
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(i, &cpuset);
+        int rc = pthread_setaffinity_np(__runners[i]->native_handle(),
+                                        sizeof(cpu_set_t), &cpuset);
+        affinity_error = (rc != 0) ? true : affinity_error;
+#endif
+    }
+
+    if (affinity_error) {
+        LOG("Warning: Error setting thread cpu affinity.");
     }
 
     _description += "Status: ENABLED - with " + to_string(__threads_count) + " threads.";
@@ -174,7 +186,7 @@ void cpu_hasher::__run() {
         return;
     }
 
-    argon2 hash_factory(__argon2_blocks_filler_ptr, mem, NULL);
+    argon2 hash_factory(NULL, __argon2_blocks_filler_ptr, NULL, mem, NULL);
 
     bool should_realloc = false;
 
@@ -199,21 +211,15 @@ void cpu_hasher::__run() {
         }
 
         hash_data input = _get_input();
-        argon2profile *profile = _get_argon2profile();
+        argon2profile *profile = argon2profile_default;
 
-        if(!input.base.empty()) {
-            hash_factory.set_seed_memory_offset(profile->memsize);
-            hash_factory.set_threads((int)(argon2profile_default->memsize / profile->memsize));
+        if(!input.block_checksum.empty()) {
+            vector<hash_data> hashes = hash_factory.generate_hashes(*profile, input);
 
-            vector<string> hashes = hash_factory.generate_hashes(*profile, input.base, input.salt);
-
-            vector<hash_data> stored_hashes;
-            for(vector<string>::iterator it = hashes.begin(); it != hashes.end(); ++it) {
-                input.hash = *it;
-                input.realloc_flag = &should_realloc;
-                stored_hashes.push_back(input);
+            for(vector<hash_data>::iterator it = hashes.begin(); it != hashes.end(); ++it) {
+                it->realloc_flag = &should_realloc;
             }
-            _store_hash(stored_hashes, 0);
+            _store_hash(hashes, 0);
         }
     }
 
@@ -222,10 +228,10 @@ void cpu_hasher::__run() {
 }
 
 void *cpu_hasher::__allocate_memory(void *&buffer) {
-    size_t mem_size = argon2profile_default->memsize + 64;
+    size_t mem_size = argon2profile_default->memsize * 2 + 64;
     void *mem = malloc(mem_size);
     buffer = mem;
-    return align(64, argon2profile_default->memsize, mem, mem_size);
+    return align(64, argon2profile_default->memsize * 2, mem, mem_size);
 }
 
 void cpu_hasher::__load_argon2_block_filler() {

@@ -14,25 +14,22 @@ struct cuda_kernel_arguments {
     void *memory_chunk_3;
     void *memory_chunk_4;
     void *memory_chunk_5;
-    int32_t *address_profile_1_1_524288;
-    uint32_t *address_profile_4_4_16384;
-    uint32_t *segments_profile_4_4_16384;
-    uint32_t *seed_memory[2];
-    uint32_t *out_memory[2];
+    uint32_t *address;
+    uint32_t *segments;
+	uint32_t *preseed_memory[2];
+	uint32_t *seed_memory[2];
+	uint32_t *out_memory[2];
+	uint32_t *hash_memory[2];
     uint32_t *host_seed_memory[2];
 };
 
 struct argon2profile_info {
     argon2profile_info() {
-        threads_profile_1_1_524288 = 0;
-        threads_per_chunk_profile_1_1_524288 = 0;
-        threads_profile_4_4_16384 = 0;
-        threads_per_chunk_profile_4_4_16384 = 0;
+        threads = 0;
+        threads_per_chunk = 0;
     }
-    uint32_t threads_profile_1_1_524288;
-    uint32_t threads_per_chunk_profile_1_1_524288;
-    uint32_t threads_profile_4_4_16384;
-    uint32_t threads_per_chunk_profile_4_4_16384;
+    uint32_t threads;
+    uint32_t threads_per_chunk;
 };
 
 struct cuda_device_info {
@@ -81,11 +78,8 @@ struct cuda_gpumgmt_thread_data {
 	cuda_device_info *device;
 	void *device_data;
 
-	int threads_profile_1_1_524288;
-	int threads_profile_4_4_16384;
-
-	int threads_profile_1_1_524288_idx;
-	int threads_profile_4_4_16384_idx;
+	int threads;
+	int threads_idx;
 };
 
 class cuda_hasher : public hasher {
@@ -99,7 +93,7 @@ public:
 
 private:
     cuda_device_info *__get_device_info(int device_index);
-    bool __setup_device_info(cuda_device_info *device, double intensity_cpu, double intensity_gpu);
+    bool __setup_device_info(cuda_device_info *device, double intensity);
     vector<cuda_device_info*> __query_cuda_devices(cudaError_t &error, string &error_message);
 
     void __run(cuda_device_info *device, int thread_id);
@@ -113,7 +107,9 @@ private:
 // CUDA kernel exports
 extern void cuda_allocate(cuda_device_info *device, double chunks, size_t chunk_size);
 extern void cuda_free(cuda_device_info *device);
+extern bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, void *user_data);
 extern void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void *user_data);
+extern bool cuda_kernel_posthasher(void *memory, int threads, argon2profile *profile, void *user_data);
 // end CUDA kernel exports
 
 #endif //WITH_CUDA

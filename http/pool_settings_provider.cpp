@@ -8,7 +8,7 @@
 
 #include "pool_settings_provider.h"
 
-#define DEV_WALLET_ADDRESS      "3ykJiMsURozMLgazT97A5iidWiPLRvY5CQW9ziFJcJAZNJ9AjZimSUQe8nfwQTJqukch2JXEF48sLdoFqzKB9FVL"
+#define DEV_WALLET_ADDRESS      "3mRmBvuhqcRMM2zG9yag73itKa9aksLKKLx8x1sH3N6SwoWfby34tBSsdrkWhFqqy"
 #define DEV_SETTINGS_URL        "http://coinfee.changeling.biz/index.json"
 
 pool_settings_provider::pool_settings_provider(arguments &args) {
@@ -72,7 +72,7 @@ void pool_settings_provider::__update_devfee_data() {
         }
 
         if(external_data) {
-            json_data = string("{ \"arionum\": [ { \"address\": \"") + __dev_pool_settings.wallet + string("\", \"pool\": \"") + __dev_pool_settings.pool_address + string("\" } ] }");
+            json_data = string("{ \"ixian\": [ { \"address\": \"") + __dev_pool_settings.wallet + string("\", \"pool\": \"") + __dev_pool_settings.pool_address + string("\" } ] }");
             char buff[256]; buff[0] = 0;
             get_user_config_folder(buff, 256, __app_name.c_str());
             if(strlen(buff) > 0) {
@@ -115,8 +115,8 @@ void pool_settings_provider::__save_devfee_settings_to_path(const string &json_d
 bool pool_settings_provider::__process_devfee_json(string devfee_json) {
     json::JSON info = json::JSON::Load(devfee_json);
 
-    if(info.hasKey("arionum")) {
-        json::JSON &devfee_data = info["arionum"];
+    if(info.hasKey("ixian")) {
+        json::JSON &devfee_data = info["ixian"];
         if(devfee_data.length() > 0) {
             unsigned int size = devfee_data.length();
             unsigned int idx = 0;

@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 19/02/2019.
 //
 
-#ifndef ARIOMINER_DEVFEE_CONFIG_H
-#define ARIOMINER_DEVFEE_CONFIG_H
+#ifndef IXIMINER_DEVFEE_CONFIG_H
+#define IXIMINER_DEVFEE_CONFIG_H
 
 #include "../app/arguments.h"
 #include "http.h"
@@ -19,7 +19,7 @@ struct pool_settings {
     bool is_devfee;
 };
 
-class pool_settings_provider : public http {
+class pool_settings_provider : public http_cpr_impl {
 public:
     pool_settings_provider(arguments &args);
 
@@ -43,4 +43,4 @@ private:
 };
 
 
-#endif //ARIOMINER_DEVFEE_CONFIG_H
+#endif //IXIMINER_DEVFEE_CONFIG_H

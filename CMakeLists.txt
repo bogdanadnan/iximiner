@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 2.8)
-project (ArioMiner)
+project (IxiMiner)
 
 include (TargetArch.cmake)
 
@@ -17,20 +17,21 @@ set(SOURCE
         http/civetweb/civetweb.c http/civetweb/CivetServer.cpp
         http/simplejson/json.h
         miner/miner.cpp miner/miner.h
-        proxy/proxy.cpp proxy/proxy.h
+#        proxy/proxy.cpp proxy/proxy.h
+#        proxy/proxy_server.cpp proxy/proxy_server.h
         app/main.cpp
         http/http_parser/http_parser.c http/http_parser/http_parser.h
         miner/mini-gmp/mini-gmp.h miner/mini-gmp/mini-gmp.c
         autotune/autotune.cpp autotune/autotune.h
         app/runner.h
-        miner/miner_api.cpp miner/miner_api.h http/pool_settings_provider.cpp http/pool_settings_provider.h http/simplejson/json.cpp proxy/proxy_server.cpp proxy/proxy_server.h http/node_api.cpp http/node_api.h)
+        miner/miner_api.cpp miner/miner_api.h http/pool_settings_provider.cpp http/pool_settings_provider.h http/simplejson/json.cpp http/node_api.cpp http/node_api.h)
 set(SOURCE_COMMON app/arguments.cpp app/arguments.h common/common.h common/common.cpp common/dllimport.h common/dllexport.h
         crypt/sha512.cpp crypt/sha512.h crypt/base64.cpp crypt/base64.h crypt/random_generator.cpp crypt/random_generator.h
-        common/cfgpath.h)
+        common/cfgpath.h crypt/hex.cpp crypt/hex.h)
 set(SOURCE_HASHER hash/hasher.cpp hash/hasher.h hash/argon2/argon2.cpp hash/argon2/argon2.h
         hash/argon2/defs.h hash/argon2/blake2/blake2b.c hash/argon2/blake2/blake2.h hash/argon2/blake2/blake2b-round.h
         hash/argon2/blake2/blake2b-load-sse41.h hash/argon2/blake2/blake2b-load-sse2.h hash/argon2/blake2/blake2-config.h
-        hash/argon2/argon2profile_4_4_16384.c hash/argon2/argon2profile_1_1_524288.c)
+        hash/argon2/argon2profile_4_4_16384.c hash/argon2/argon2profile_1_1_524288.c hash/argon2/argon2profile_1_2_1024.c)
 set(SOURCE_CPU_HASHER hash/cpu/cpu_hasher.cpp hash/cpu/cpu_hasher.h)
 set(SOURCE_OPENCL_HASHER hash/gpu/opencl/opencl_hasher.cpp hash/gpu/opencl/opencl_hasher.h
         hash/gpu/opencl/opencl_kernel.cpp hash/gpu/opencl/opencl_kernel.h)
@@ -46,9 +47,9 @@ set(ARGON2_FILL_BLOCKS_SRC
         hash/argon2/blake2/blake2-impl.h)
 
 set (CMAKE_CXX_STANDARD 11)
-set (ArioMiner_VERSION_MAJOR 0)
-set (ArioMiner_VERSION_MINOR 2)
-set (ArioMiner_VERSION_REVISION 0)
+set (IxiMiner_VERSION_MAJOR 0)
+set (IxiMiner_VERSION_MINOR 1)
+set (IxiMiner_VERSION_REVISION 0)
 
 set (CMAKE_MACOSX_RPATH 0)
 
@@ -59,9 +60,14 @@ configure_file (
 
 include_directories("${PROJECT_BINARY_DIR}")
 include_directories(hash/cpu/cpu_features/include)
+
 if(WIN32)
     include_directories(win64/include)
     list(APPEND SOURCE_COMMON win64/src/dlfcn.c win64/src/win64.c)
+endif()
+
+if(APPLE)
+    list(APPEND SOURCE_COMMON macosx/cpu_affinity.cpp)
 endif()
 
 find_package(Threads)
@@ -69,7 +75,14 @@ find_package(Threads)
 add_subdirectory(hash/cpu/cpu_features)
 set_property(TARGET cpu_features PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-add_executable(ariominer ${SOURCE})
+set(USE_SYSTEM_CURL ON)
+set(BUILD_CPR_TESTS OFF)
+add_subdirectory(http/cpr)
+include_directories(${CPR_INCLUDE_DIRS})
+
+add_executable(iximiner ${SOURCE})
+target_link_libraries(iximiner ${CPR_LIBRARIES})
+
 add_library(common SHARED ${SOURCE_COMMON})
 add_library(hasher SHARED ${SOURCE_HASHER})
 target_link_libraries(hasher common ${CMAKE_DL_LIBS} ${CMAKE_THREAD_LIBS_INIT})
@@ -84,15 +97,18 @@ set_target_properties(cpu_hasher
         LIBRARY_OUTPUT_DIRECTORY modules
         )
 target_link_libraries(cpu_hasher hasher cpu_features)
-add_dependencies(ariominer cpu_hasher)
+add_dependencies(iximiner cpu_hasher)
 
 if(NOT WITHOUT_CUDA)
     add_definitions(-DWITH_CUDA)
     find_package(CUDA REQUIRED)
+    if(NOT WIN32)
+        add_definitions(-DPARALLEL_CUDA)
+    endif()
     set(
             CUDA_NVCC_FLAGS
             ${CUDA_NVCC_FLAGS};
-            -O3 -arch=compute_35
+            -O3 -arch=compute_35 -std=c++11
     )
     cuda_add_library(cuda_hasher MODULE ${SOURCE_CUDA_HASHER})
     set_target_properties(cuda_hasher
@@ -102,10 +118,7 @@ if(NOT WITHOUT_CUDA)
             LIBRARY_OUTPUT_DIRECTORY modules
             )
     target_link_libraries(cuda_hasher hasher)
-    if(NOT WIN32)
-        add_definitions(-DPARALLEL_CUDA)
-    endif()
-    add_dependencies(ariominer cuda_hasher)
+    add_dependencies(iximiner cuda_hasher)
 endif()
 
 if(NOT WITHOUT_OPENCL)
@@ -120,9 +133,10 @@ if(NOT WITHOUT_OPENCL)
             LIBRARY_OUTPUT_DIRECTORY modules
             )
     target_link_libraries(opencl_hasher hasher ${OpenCL_LIBRARY})
-    add_dependencies(ariominer opencl_hasher)
+    add_dependencies(iximiner opencl_hasher)
 
-    if(NOT WITHOUT_AMDGCN)
+#    if(NOT WITHOUT_AMDGCN)
+    if(0)
         add_definitions(-DWITH_AMDGCN)
         list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/hash/gpu/amdgcn/CLRX/cmake")
         add_subdirectory("hash/gpu/amdgcn/CLRX")
@@ -138,16 +152,16 @@ if(NOT WITHOUT_OPENCL)
                 )
         target_link_libraries(amdgcn_hasher hasher CLRXCLHelperStatic CLRXAmdAsmStatic
                 CLRXAmdBinStatic CLRXUtilsStatic ${OpenCL_LIBRARY})
-        add_dependencies(ariominer amdgcn_hasher)
+        add_dependencies(iximiner amdgcn_hasher)
     endif()
 endif()
 
-target_link_libraries(ariominer common hasher)
+target_link_libraries(iximiner common hasher)
 if(WIN32)
-    target_link_libraries(ariominer ws2_32.lib)
+    target_link_libraries(iximiner ws2_32.lib)
 endif()
 if(APPLE)
-    set_target_properties(ariominer PROPERTIES LINK_FLAGS "-framework CoreServices")
+    set_target_properties(iximiner PROPERTIES LINK_FLAGS "-framework CoreServices")
 endif()
 
 add_library(argon2_fill_blocks_REF MODULE ${ARGON2_FILL_BLOCKS_SRC})
@@ -158,7 +172,7 @@ set_target_properties(argon2_fill_blocks_REF
         LIBRARY_OUTPUT_DIRECTORY modules
         )
 target_compile_definitions(argon2_fill_blocks_REF PRIVATE BUILD_REF=1)
-add_dependencies(ariominer argon2_fill_blocks_REF)
+add_dependencies(iximiner argon2_fill_blocks_REF)
 
 if(ARCH STREQUAL "x86_64")
     add_library(argon2_fill_blocks_SSE2 MODULE ${ARGON2_FILL_BLOCKS_SRC})
@@ -177,7 +191,7 @@ if(ARCH STREQUAL "x86_64")
     target_compile_options(argon2_fill_blocks_AVX PRIVATE -mavx)
     target_compile_options(argon2_fill_blocks_AVX2 PRIVATE -mavx2)
     target_compile_options(argon2_fill_blocks_AVX512F PRIVATE -mavx512f)
-    add_dependencies(ariominer argon2_fill_blocks_SSE2 argon2_fill_blocks_SSSE3 argon2_fill_blocks_AVX argon2_fill_blocks_AVX2 argon2_fill_blocks_AVX512F)
+    add_dependencies(iximiner argon2_fill_blocks_SSE2 argon2_fill_blocks_SSSE3 argon2_fill_blocks_AVX argon2_fill_blocks_AVX2 argon2_fill_blocks_AVX512F)
 endif(ARCH STREQUAL "x86_64")
 
 if(ARCH STREQUAL "arm" OR ARCH STREQUAL "aarch64")
@@ -195,7 +209,7 @@ if(ARCH STREQUAL "arm" OR ARCH STREQUAL "aarch64")
        target_compile_options(argon2_fill_blocks_NEON PRIVATE -D__NEON__)
     endif(ARCH STREQUAL "arm")
 
-    add_dependencies(ariominer argon2_fill_blocks_NEON)
+    add_dependencies(iximiner argon2_fill_blocks_NEON)
 endif(ARCH STREQUAL "arm" OR ARCH STREQUAL "aarch64")
 
 if(WIN32)
@@ -208,4 +222,4 @@ endif()
 add_custom_target(copy-reporting-files ALL
         COMMAND cmake -E copy_directory "${CMAKE_SOURCE_DIR}/proxy/reporting/dist" "${CMAKE_BINARY_DIR}/reporting")
 
-add_dependencies(ariominer copy-reporting-files)
+add_dependencies(iximiner copy-reporting-files)
