@@ -799,15 +799,19 @@ __kernel void prehash (
         __global uint *seed,
         __local ulong *blake_shared) {
 
-	int hash = get_group_id(0);
-	int id = get_local_id(0);
+    int hash = get_group_id(0) * 4;
+    int id = get_local_id(0); // 64 threads
+
+    int hash_idx = id >> 4;
+    hash += hash_idx;
+    id = id & 0xF;
 
     int thr_id = id % 4; // thread id in session
     int session = id / 4; // 4 blake2b hashing session
     int lane = session / 2;  // 2 lanes
     int idx = session % 2; // idx in lane
 
-    __local uint *local_mem = (__local uint *)&blake_shared[session * BLAKE_SHARED_MEM_ULONG];
+    __local uint *local_mem = (__local uint *)&blake_shared[(hash_idx * 4 + session) * BLAKE_SHARED_MEM_ULONG];
     __global uint *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
     __global uint *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
 
