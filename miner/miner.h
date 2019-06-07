@@ -2,10 +2,8 @@
 // Created by Haifa Bogdan Adnan on 03/08/2018.
 //
 
-#ifndef PROJECT_MINER_H
-#define PROJECT_MINER_H
-
-#define GOLD_RESULT         240
+#ifndef IXIMINER_H
+#define IXIMINER_H
 
 #include "../http/client.h"
 #include "../app/runner.h"
@@ -18,29 +16,35 @@ public:
     virtual void run();
     virtual void stop();
 
-private:
-    string __calc_duration(const string &base, const string &hash);
-    uint64_t __calc_compare(const string &duration);
-    bool __update_pool_data();
-    void __display_report();
+    string get_status();
 
-    string __argon2profile;
+	static string calc_hash_ceil(uint64_t difficulty);
+	static bool check_hash(const string &hash, const string &hash_ceil);
+
+private:
+    bool __update_pool_data();
+    bool __display_report();
+    void __disconnect_from_pool();
+
     string __recommendation;
-    string __nonce;
-    string __blk;
-    string __difficulty;
-    uint32_t __limit;
-    string __public_key;
-    uint32_t __height;
+    uint64_t __height;
+    int __version;
+    uint64_t __difficulty;
+    string __block_checksum;
+    string __solver_address;
+    string __hash_ceil;
     uint32_t __found;
-    uint32_t __confirmed;
-    uint32_t __rejected;
+	uint32_t __confirmed;
+	uint32_t __rejected;
+    int __hs_threshold_hit;
+    int __blocks_count;
+	uint64_t __display_hits;
 
     time_t __begin_time;
 
     bool __running;
 
     arguments &__args;
-    ariopool_client __client;
+    pool_client __client;
 };
-#endif //PROJECT_MINER_H
+#endif //IXIMINER_H

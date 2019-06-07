@@ -2,11 +2,11 @@
 // Created by Haifa Bogdan Adnan on 04/08/2018.
 //
 
-#ifndef ARIOMINER_CONFIG_H_IN_H
-#define ARIOMINER_CONFIG_H_IN_H
+#ifndef IXIMINER_CONFIG_H_IN_H
+#define IXIMINER_CONFIG_H_IN_H
 
-#define ArioMiner_VERSION_MAJOR "@ArioMiner_VERSION_MAJOR@"
-#define ArioMiner_VERSION_MINOR "@ArioMiner_VERSION_MINOR@"
-#define ArioMiner_VERSION_REVISION "@ArioMiner_VERSION_REVISION@"
+#define IxiMiner_VERSION_MAJOR "@IxiMiner_VERSION_MAJOR@"
+#define IxiMiner_VERSION_MINOR "@IxiMiner_VERSION_MINOR@"
+#define IxiMiner_VERSION_REVISION "@IxiMiner_VERSION_REVISION@"
 
-#endif //ARIOMINER_CONFIG_H_IN_H
+#endif //IXIMINER_CONFIG_H_IN_H

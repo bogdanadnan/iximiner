@@ -7,7 +7,8 @@
 #include "runner.h"
 #include "../miner/miner.h"
 #include "../autotune/autotune.h"
-#include "../proxy/proxy.h"
+//#include "../proxy/proxy.h"
+#include "../hash/hasher.h"
 
 runner *main_app = NULL;
 
@@ -19,14 +20,20 @@ void shutdown(int s){
 
 int main(int argc, char *argv[]) {
     srand((uint32_t)time(NULL));
-    struct sigaction sigIntHandler;
+
+#ifdef _WIN64
+	signal(SIGINT, shutdown);
+	signal(SIGTERM, shutdown);
+	signal(SIGABRT, shutdown);
+#else
+	struct sigaction sigIntHandler;
 
     sigIntHandler.sa_handler = shutdown;
     sigemptyset(&sigIntHandler.sa_mask);
     sigIntHandler.sa_flags = 0;
 
     sigaction(SIGINT, &sigIntHandler, NULL);
-
+#endif
     arguments args(argc, argv);
 
     if(args.is_help()) {
@@ -37,9 +44,11 @@ int main(int argc, char *argv[]) {
     string args_err;
     if(!args.valid(args_err)) {
         cout << args_err << endl;
-        cout << "Type ariominer --help for usage information." << endl;
+        cout << "Type iximiner --help for usage information." << endl;
         return 0;
     }
+
+    hasher::load_hashers();
 
     if(args.is_miner()) {
         miner m(args);
@@ -52,9 +61,10 @@ int main(int argc, char *argv[]) {
         a.run();
     }
     else if(args.is_proxy()) {
-        proxy p(args);
-        main_app = &p;
-        p.run();
+//        proxy p(args);
+//        main_app = &p;
+//        p.run();
+        LOG("Proxy mode is not supported yet.");
     }
 
     return 0;

@@ -2,16 +2,15 @@
 // Created by Haifa Bogdan Adnan on 17/08/2018.
 //
 
-#ifndef ARIOMINER_RANDOM_GENERATOR_H
-#define ARIOMINER_RANDOM_GENERATOR_H
+#ifndef IXIMINER_RANDOM_GENERATOR_H
+#define IXIMINER_RANDOM_GENERATOR_H
 
-
-class random_generator {
+class DLLEXPORT random_generator {
 public:
     random_generator();
     static random_generator &instance();
 
-    void get_random_data(char *buffer, int length);
+    void get_random_data(unsigned char *buffer, int length);
 
 private:
     random_device __randomDevice;
@@ -22,5 +21,4 @@ private:
     static random_generator __instance;
 };
 
-
-#endif //ARIOMINER_RANDOM_GENERATOR_H
+#endif //IXIMINER_RANDOM_GENERATOR_H

@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 04/08/2018.
 //
 
-#ifndef ARIOMINER_COMMON_H
-#define ARIOMINER_COMMON_H
+#ifndef IXIMINER_COMMON_H
+#define IXIMINER_COMMON_H
 
 #include <cstdio>
 #include <cstdlib>
@@ -11,9 +11,12 @@
 
 #include <string>
 #include <vector>
+#include <queue>
 #include <list>
+#include <map>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <iomanip>
 #include <regex>
 #include <random>
@@ -23,6 +26,10 @@
 #include <chrono>
 
 #include <cmath>
+#include <signal.h>
+
+#include <dlfcn.h>
+#include "dllimport.h"
 
 #ifndef _WIN64
 #include <unistd.h>
@@ -32,23 +39,25 @@
 #include<netdb.h>
 #include<arpa/inet.h>
 #include <fcntl.h>
-#include <signal.h>
 #else
-#include <WinSock2.h>
-#include <WS2tcpip.h>
-#include <win64_compatibility_layer.h>
+#include <win64.h>
+#endif
 
-#define close closesocket
+#ifdef __APPLE__
+#include "../macosx/cpu_affinity.h"
 #endif
 
 #include <config.h>
 
 using namespace std;
 
-#define LOG(msg) cout<<msg<<endl
+#define LOG(msg) cout<<msg<<endl<<flush
 
-uint64_t microseconds();
+DLLEXPORT uint64_t microseconds();
+DLLEXPORT vector<string> get_files(string folder);
+DLLEXPORT bool is_number(const string &s);
+DLLEXPORT string generate_uid(size_t length);
+DLLEXPORT string format_seconds(uint64_t seconds);
+DLLEXPORT string format_hashrate(int hashrate);
 
-
-
-#endif //ARIOMINER_COMMON_H
+#endif //IXIMINER_COMMON_H
