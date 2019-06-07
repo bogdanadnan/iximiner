@@ -333,56 +333,56 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
         return false;
     }
 
-    device->arguments.preseed_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_ONLY, max_threads * IXIAN_SEED_SIZE, NULL, &error);
+    device->arguments.preseed_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_ONLY, device->profile_info.threads * IXIAN_SEED_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.preseed_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_ONLY, max_threads * IXIAN_SEED_SIZE, NULL, &error);
+    device->arguments.preseed_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_ONLY, device->profile_info.threads * IXIAN_SEED_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.seed_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, max_threads * 4 * ARGON2_BLOCK_SIZE, NULL, &error);
+    device->arguments.seed_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, device->profile_info.threads * 4 * ARGON2_BLOCK_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.seed_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, max_threads * 4 * ARGON2_BLOCK_SIZE, NULL, &error);
+    device->arguments.seed_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, device->profile_info.threads * 4 * ARGON2_BLOCK_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.out_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, max_threads * ARGON2_BLOCK_SIZE, NULL, &error);
+    device->arguments.out_memory[0] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, device->profile_info.threads * ARGON2_BLOCK_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.out_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, max_threads * ARGON2_BLOCK_SIZE, NULL, &error);
+    device->arguments.out_memory[1] = clCreateBuffer(device->context, CL_MEM_READ_WRITE, device->profile_info.threads * ARGON2_BLOCK_SIZE, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.hash_memory[0] = clCreateBuffer(device->context, CL_MEM_WRITE_ONLY, max_threads * ARGON2_RAW_LENGTH, NULL, &error);
+    device->arguments.hash_memory[0] = clCreateBuffer(device->context, CL_MEM_WRITE_ONLY, device->profile_info.threads * ARGON2_RAW_LENGTH, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
         return false;
     }
 
-    device->arguments.hash_memory[1] = clCreateBuffer(device->context, CL_MEM_WRITE_ONLY, max_threads * ARGON2_RAW_LENGTH, NULL, &error);
+    device->arguments.hash_memory[1] = clCreateBuffer(device->context, CL_MEM_WRITE_ONLY, device->profile_info.threads * ARGON2_RAW_LENGTH, NULL, &error);
     if(error != CL_SUCCESS) {
         device->error = error;
         device->error_message = "Error creating memory buffer.";
@@ -666,7 +666,7 @@ bool opencl_kernel_prehasher(void *memory, int threads, argon2profile *profile, 
 
     clSetKernelArg(device->kernel_prehash, 0, sizeof(device->arguments.preseed_memory[gpumgmt_thread->thread_id]), &device->arguments.preseed_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_prehash, 1, sizeof(device->arguments.seed_memory[gpumgmt_thread->thread_id]), &device->arguments.seed_memory[gpumgmt_thread->thread_id]);
-    clSetKernelArg(device->kernel_prehash, 2, 4 * 480, NULL);
+    clSetKernelArg(device->kernel_prehash, 2, 4 * sizeof(cl_ulong) * 60, NULL);
 
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_prehash, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {
@@ -712,7 +712,7 @@ bool opencl_kernel_posthasher(void *memory, int threads, argon2profile *profile,
 
     clSetKernelArg(device->kernel_posthash, 0, sizeof(device->arguments.hash_memory[gpumgmt_thread->thread_id]), &device->arguments.hash_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_posthash, 1, sizeof(device->arguments.out_memory[gpumgmt_thread->thread_id]), &device->arguments.out_memory[gpumgmt_thread->thread_id]);
-    clSetKernelArg(device->kernel_posthash, 2, 480, NULL);
+    clSetKernelArg(device->kernel_posthash, 2, sizeof(cl_ulong) * 60, NULL);
 
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_posthash, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {

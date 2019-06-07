@@ -19,7 +19,7 @@ string opencl_kernel = R"OCL(
 #define ARGON2_DWORDS_IN_BLOCK (ARGON2_BLOCK_SIZE / 4)
 
 #define BLAKE_SHARED_MEM            480
-#define BLAKE_SHARED_MEM_UINT       120
+#define BLAKE_SHARED_MEM_ULONG       60
 
 #define ARGON2_RAW_LENGTH           8
 
@@ -797,8 +797,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 __kernel void prehash (
         __global uint *preseed,
         __global uint *seed,
-        __local uint *shared) {
-//    __local uint shared[4 * BLAKE_SHARED_MEM_UINT];
+        __local ulong *blake_shared) {
 
 	int hash = get_group_id(0);
 	int id = get_local_id(0);
@@ -808,11 +807,11 @@ __kernel void prehash (
     int lane = session / 2;  // 2 lanes
     int idx = session % 2; // idx in lane
 
-    __local uint *local_mem = &shared[session * BLAKE_SHARED_MEM_UINT];
+    __local uint *local_mem = (__local uint *)&blake_shared[session * BLAKE_SHARED_MEM_ULONG];
     __global uint *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
     __global uint *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
 
-    __local ulong *h = (__local ulong*)&local_mem[20];
+    __local ulong *h = (__local ulong *)&local_mem[20];
 	__local ulong *shfl = &h[10];
 	__local uint *buf = (__local uint *)&shfl[16];
 	__local uint *value = &buf[32];
@@ -856,8 +855,7 @@ __kernel void prehash (
 __kernel void posthash (
         __global uint *hash,
         __global uint *out,
-        __local uint *shared) {
-//    __local uint shared[BLAKE_SHARED_MEM_UINT];
+        __local ulong *blake_shared) {
 
 	int hash_id = get_group_id(0);
 	int thread = get_local_id(0);
@@ -865,7 +863,7 @@ __kernel void posthash (
     __global uint *local_hash = hash + hash_id * ARGON2_RAW_LENGTH;
     __global uint *local_out = out + hash_id * BLOCK_SIZE_UINT;
 
-    blake2b_digestLong_global(local_hash, ARGON2_RAW_LENGTH, local_out, ARGON2_DWORDS_IN_BLOCK, thread, (__local ulong *)shared);
+    blake2b_digestLong_global(local_hash, ARGON2_RAW_LENGTH, local_out, ARGON2_DWORDS_IN_BLOCK, thread, blake_shared);
 }
 
 )OCL";
