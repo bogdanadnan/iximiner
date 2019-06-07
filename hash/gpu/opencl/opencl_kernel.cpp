@@ -9,7 +9,425 @@
 string opencl_kernel = R"OCL(
 #define ITEMS_PER_SEGMENT               32
 #define BLOCK_SIZE_ULONG                128
+#define BLOCK_SIZE_UINT                 256
 #define MEMSIZE					        1024
+#define ARGON2_PREHASH_DIGEST_LENGTH_UINT   16
+#define ARGON2_PREHASH_SEED_LENGTH_UINT     18
+#define IXIAN_SEED_SIZE_UINT                39
+
+#define ARGON2_BLOCK_SIZE 1024
+#define ARGON2_DWORDS_IN_BLOCK (ARGON2_BLOCK_SIZE / 4)
+
+#define BLAKE_SHARED_MEM            480
+#define BLAKE_SHARED_MEM_ULONG       60
+
+#define ARGON2_RAW_LENGTH           8
+
+#define ARGON2_TYPE_VALUE               2
+#define ARGON2_VERSION                  0x13
+
+#define BLOCK_BYTES	32
+#define OUT_BYTES	16
+
+#define G(m, r, i, a, b, c, d) \
+do { \
+	a = a + b + m[blake2b_sigma[r][2 * i + 0]]; \
+	d = rotr64(d ^ a, 32); \
+	c = c + d; \
+	b = rotr64(b ^ c, 24); \
+	a = a + b + m[blake2b_sigma[r][2 * i + 1]]; \
+	d = rotr64(d ^ a, 16); \
+	c = c + d; \
+	b = rotr64(b ^ c, 63); \
+} while ((void)0, 0)
+
+#define ROUND(m, t, r, shfl) \
+do { \
+	G(m, r, t, v0, v1, v2, v3); \
+    shfl[t + 4] = v1; \
+    shfl[t + 8] = v2; \
+    shfl[t + 12] = v3; \
+    mem_fence(CLK_LOCAL_MEM_FENCE); \
+    v1 = shfl[((t + 1) % 4)+ 4]; \
+    v2 = shfl[((t + 2) % 4)+ 8]; \
+    v3 = shfl[((t + 3) % 4)+ 12]; \
+	G(m, r, (t + 4), v0, v1, v2, v3); \
+    shfl[((t + 1) % 4)+ 4] = v1; \
+    shfl[((t + 2) % 4)+ 8] = v2; \
+    shfl[((t + 3) % 4)+ 12] = v3; \
+    mem_fence(CLK_LOCAL_MEM_FENCE); \
+    v1 = shfl[t + 4]; \
+    v2 = shfl[t + 8]; \
+    v3 = shfl[t + 12]; \
+} while ((void)0, 0)
+
+ulong rotr64(ulong x, ulong n)
+{
+	return rotate(x, 64 - n);
+}
+
+__constant ulong blake2b_IV[8] = {
+        0x6A09E667F3BCC908, 0xBB67AE8584CAA73B,
+        0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1,
+        0x510E527FADE682D1, 0x9B05688C2B3E6C1F,
+        0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
+};
+
+__constant uint blake2b_sigma[12][16] = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+        {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
+        {11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4},
+        {7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8},
+        {9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13},
+        {2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9},
+        {12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11},
+        {13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10},
+        {6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5},
+        {10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0},
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+        {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
+};
+
+void blake2b_compress(__local ulong *h, __local ulong *m, ulong f0, __local ulong *shfl, int thr_id)
+{
+    ulong v0, v1, v2, v3;
+
+    mem_fence(CLK_LOCAL_MEM_FENCE);
+
+    v0 = h[thr_id];
+    v1 = h[thr_id + 4];
+    v2 = blake2b_IV[thr_id];
+    v3 = blake2b_IV[thr_id + 4];
+
+    if(thr_id == 0) v3 ^= h[8];
+    if(thr_id == 1) v3 ^= h[9];
+    if(thr_id == 2) v3 ^= f0;
+
+    ROUND(m, thr_id, 0, shfl);
+    ROUND(m, thr_id, 1, shfl);
+    ROUND(m, thr_id, 2, shfl);
+    ROUND(m, thr_id, 3, shfl);
+    ROUND(m, thr_id, 4, shfl);
+    ROUND(m, thr_id, 5, shfl);
+    ROUND(m, thr_id, 6, shfl);
+    ROUND(m, thr_id, 7, shfl);
+    ROUND(m, thr_id, 8, shfl);
+    ROUND(m, thr_id, 9, shfl);
+    ROUND(m, thr_id, 10, shfl);
+    ROUND(m, thr_id, 11, shfl);
+
+    h[thr_id] ^= v0 ^ v2;
+    h[thr_id + 4] ^= v1 ^ v3;
+}
+
+void blake2b_incrementCounter(__local ulong *h, int inc)
+{
+    h[8] += (inc * 4);
+    h[9] += (h[8] < (inc * 4));
+}
+
+void blake2b_final_global(__global uint *out, int out_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
+{
+    int left = BLOCK_BYTES - buf_len;
+    __local uint *cursor_out_local = buf + buf_len;
+
+    for(int i=0; i < (left >> 2); i++, cursor_out_local += 4) {
+        cursor_out_local[thr_id] = 0;
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (left % 4); i++) {
+            cursor_out_local[i] = 0;
+        }
+        blake2b_incrementCounter(h, buf_len);
+    }
+
+    blake2b_compress(h, (__local ulong *)buf, 0xFFFFFFFFFFFFFFFF, shfl, thr_id);
+
+    __local uint *cursor_in = (__local uint *)h;
+    __global uint *cursor_out_global = out;
+
+    for(int i=0; i < (out_len >> 2); i++, cursor_in += 4, cursor_out_global += 4) {
+        cursor_out_global[thr_id] = cursor_in[thr_id];
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (out_len % 4); i++) {
+            cursor_out_global[i] = cursor_in[i];
+        }
+    }
+}
+
+void blake2b_final_local(__local uint *out, int out_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
+{
+    int left = BLOCK_BYTES - buf_len;
+    __local uint *cursor_out = buf + buf_len;
+
+    for(int i=0; i < (left >> 2); i++, cursor_out += 4) {
+        cursor_out[thr_id] = 0;
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (left % 4); i++) {
+            cursor_out[i] = 0;
+        }
+        blake2b_incrementCounter(h, buf_len);
+    }
+
+    blake2b_compress(h, (__local ulong *)buf, 0xFFFFFFFFFFFFFFFF, shfl, thr_id);
+
+    __local uint *cursor_in = (__local uint *)h;
+    cursor_out = out;
+
+    for(int i=0; i < (out_len >> 2); i++, cursor_in += 4, cursor_out += 4) {
+        cursor_out[thr_id] = cursor_in[thr_id];
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (out_len % 4); i++) {
+            cursor_out[i] = cursor_in[i];
+        }
+    }
+}
+
+int blake2b_update_global(__global uint *in, int in_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
+{
+    __global uint *cursor_in = in;
+    __local uint *cursor_out = buf + buf_len;
+
+    if (buf_len + in_len > BLOCK_BYTES) {
+        int left = BLOCK_BYTES - buf_len;
+
+        for(int i=0; i < (left >> 2); i++, cursor_in += 4, cursor_out += 4) {
+            cursor_out[thr_id] = cursor_in[thr_id];
+        }
+
+        if(thr_id == 0) {
+            for (int i = 0; i < (left % 4); i++) {
+                cursor_out[i] = cursor_in[i];
+            }
+            blake2b_incrementCounter(h, BLOCK_BYTES);
+        }
+
+        blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+        buf_len = 0;
+
+        in_len -= left;
+        in += left;
+
+        while (in_len > BLOCK_BYTES) {
+            if(thr_id == 0)
+                blake2b_incrementCounter(h, BLOCK_BYTES);
+
+            cursor_in = in;
+            cursor_out = buf;
+
+            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_in += 4, cursor_out += 4) {
+                cursor_out[thr_id] = cursor_in[thr_id];
+            }
+
+            blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+            in_len -= BLOCK_BYTES;
+            in += BLOCK_BYTES;
+        }
+    }
+
+    cursor_in = in;
+    cursor_out = buf + buf_len;
+
+    for(int i=0; i < (in_len >> 2); i++, cursor_in += 4, cursor_out += 4) {
+        cursor_out[thr_id] = cursor_in[thr_id];
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (in_len % 4); i++) {
+            cursor_out[i] = cursor_in[i];
+        }
+    }
+
+    return buf_len + in_len;
+}
+
+int blake2b_update_local(__local uint *in, int in_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
+{
+    __local uint *cursor_in = in;
+    __local uint *cursor_out = buf + buf_len;
+
+    if (buf_len + in_len > BLOCK_BYTES) {
+        int left = BLOCK_BYTES - buf_len;
+
+        for(int i=0; i < (left >> 2); i++, cursor_in += 4, cursor_out += 4) {
+            cursor_out[thr_id] = cursor_in[thr_id];
+        }
+
+        if(thr_id == 0) {
+            for (int i = 0; i < (left % 4); i++) {
+                cursor_out[i] = cursor_in[i];
+            }
+            blake2b_incrementCounter(h, BLOCK_BYTES);
+        }
+
+        blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+        buf_len = 0;
+
+        in_len -= left;
+        in += left;
+
+        while (in_len > BLOCK_BYTES) {
+            if(thr_id == 0)
+                blake2b_incrementCounter(h, BLOCK_BYTES);
+
+            cursor_in = in;
+            cursor_out = buf;
+
+            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_in += 4, cursor_out += 4) {
+                cursor_out[thr_id] = cursor_in[thr_id];
+            }
+
+            blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+            in_len -= BLOCK_BYTES;
+            in += BLOCK_BYTES;
+        }
+    }
+
+    cursor_in = in;
+    cursor_out = buf + buf_len;
+
+    for(int i=0; i < (in_len >> 2); i++, cursor_in += 4, cursor_out += 4) {
+        cursor_out[thr_id] = cursor_in[thr_id];
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (in_len % 4); i++) {
+            cursor_out[i] = cursor_in[i];
+        }
+    }
+
+    return buf_len + in_len;
+}
+
+int blake2b_init(__local ulong *h, int out_len, int thr_id)
+{
+    h[thr_id * 2] = blake2b_IV[thr_id * 2];
+    h[thr_id * 2 + 1] = blake2b_IV[thr_id * 2 + 1];
+
+    if(thr_id == 0) {
+        h[8] = h[9] = 0;
+        h[0] = 0x6A09E667F3BCC908 ^ ((out_len * 4) | (1 << 16) | (1 << 24));
+    }
+
+    return 0;
+}
+
+void blake2b_digestLong_global(__global uint *out, int out_len,
+                       __global uint *in, int in_len,
+                       int thr_id, __local ulong* shared)
+{
+    __local ulong *h = shared;
+	__local ulong *shfl = &h[10];
+    __local uint *buf = (__local uint *)&shfl[16];
+    __local uint *out_buffer = &buf[32];
+    int buf_len;
+
+    if(thr_id == 0) buf[0] = (out_len * 4);
+    buf_len = 1;
+
+    if (out_len <= OUT_BYTES) {
+        blake2b_init(h, out_len, thr_id);
+        buf_len = blake2b_update_global(in, in_len, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_global(out, out_len, h, buf, buf_len, shfl, thr_id);
+    } else {
+        __local uint *cursor_in = out_buffer;
+        __global uint *cursor_out = out;
+
+        blake2b_init(h, OUT_BYTES, thr_id);
+        buf_len = blake2b_update_global(in, in_len, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+
+        for(int i=0; i < (OUT_BYTES / 8); i++, cursor_in += 4, cursor_out += 4) {
+            cursor_out[thr_id] = cursor_in[thr_id];
+        }
+
+        out += OUT_BYTES / 2;
+
+        int to_produce = out_len - OUT_BYTES / 2;
+        while (to_produce > OUT_BYTES) {
+            buf_len = blake2b_init(h, OUT_BYTES, thr_id);
+            buf_len = blake2b_update_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+            blake2b_final_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+
+            cursor_out = out;
+            cursor_in = out_buffer;
+            for(int i=0; i < (OUT_BYTES / 8); i++, cursor_in += 4, cursor_out += 4) {
+                cursor_out[thr_id] = cursor_in[thr_id];
+            }
+
+            out += OUT_BYTES / 2;
+            to_produce -= OUT_BYTES / 2;
+        }
+
+        buf_len = blake2b_init(h, to_produce, thr_id);
+        buf_len = blake2b_update_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_global(out, to_produce, h, buf, buf_len, shfl, thr_id);
+    }
+}
+
+void blake2b_digestLong_local(__global uint *out, int out_len,
+                        __local uint *in, int in_len,
+                        int thr_id, __local ulong* shared)
+{
+    __local ulong *h = shared;
+    __local ulong *shfl = &h[10];
+    __local uint *buf = (__local uint *)&shfl[16];
+    __local uint *out_buffer = &buf[32];
+    int buf_len;
+
+    if(thr_id == 0) buf[0] = (out_len * 4);
+    buf_len = 1;
+
+    if (out_len <= OUT_BYTES) {
+        blake2b_init(h, out_len, thr_id);
+        buf_len = blake2b_update_local(in, in_len, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_global(out, out_len, h, buf, buf_len, shfl, thr_id);
+    } else {
+        __local uint *cursor_in = out_buffer;
+        __global uint *cursor_out = out;
+
+        blake2b_init(h, OUT_BYTES, thr_id);
+        buf_len = blake2b_update_local(in, in_len, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+
+        for(int i=0; i < (OUT_BYTES / 8); i++, cursor_in += 4, cursor_out += 4) {
+            cursor_out[thr_id] = cursor_in[thr_id];
+        }
+
+        out += OUT_BYTES / 2;
+
+        int to_produce = out_len - OUT_BYTES / 2;
+        while (to_produce > OUT_BYTES) {
+            buf_len = blake2b_init(h, OUT_BYTES, thr_id);
+            buf_len = blake2b_update_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+            blake2b_final_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+
+            cursor_out = out;
+            cursor_in = out_buffer;
+            for(int i=0; i < (OUT_BYTES / 8); i++, cursor_in += 4, cursor_out += 4) {
+                cursor_out[thr_id] = cursor_in[thr_id];
+            }
+
+            out += OUT_BYTES / 2;
+            to_produce -= OUT_BYTES / 2;
+        }
+
+        buf_len = blake2b_init(h, to_produce, thr_id);
+        buf_len = blake2b_update_local(out_buffer, OUT_BYTES, h, buf, buf_len, shfl, thr_id);
+        blake2b_final_global(out, to_produce, h, buf, buf_len, shfl, thr_id);
+    }
+}
 
 #define fBlaMka(x, y) ((x) + (y) + 2 * upsample(mul_hi((uint)(x), (uint)(y)), (uint)(x) * (uint)y))
 
@@ -269,7 +687,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	int i4_2 = offsets_round_4[id][2];
 	int i4_3 = offsets_round_4[id][3];
 
-	__global ulong *out_mem = out + hash * 4 * BLOCK_SIZE_ULONG;
+	__global ulong *out_mem = out + hash * BLOCK_SIZE_ULONG;
 	__global ulong *seed_mem = seed + hash * 4 * BLOCK_SIZE_ULONG + segment * 2 * BLOCK_SIZE_ULONG;
 
 	__global ulong *seed_dst = memory + segment * 512 * BLOCK_SIZE_ULONG;
@@ -375,4 +793,77 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	out_mem[local_id] = out_data0;
 	out_mem[local_id + 64] = out_data1;
 };
+
+__kernel void prehash (
+        __global uint *preseed,
+        __global uint *seed,
+        __local ulong *blake_shared) {
+
+	int hash = get_group_id(0);
+	int id = get_local_id(0);
+
+    int thr_id = id % 4; // thread id in session
+    int session = id / 4; // 4 blake2b hashing session
+    int lane = session / 2;  // 2 lanes
+    int idx = session % 2; // idx in lane
+
+    __local uint *local_mem = (__local uint *)&blake_shared[session * BLAKE_SHARED_MEM_ULONG];
+    __global uint *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
+    __global uint *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
+
+    __local ulong *h = (__local ulong *)&local_mem[20];
+	__local ulong *shfl = &h[10];
+	__local uint *buf = (__local uint *)&shfl[16];
+	__local uint *value = &buf[32];
+
+    int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
+    *value = 2; //lanes
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = 32; //outlen
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = 1024; //m_cost
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = 1; //t_cost
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = ARGON2_VERSION; //version
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = ARGON2_TYPE_VALUE; //type
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    *value = 92; //pw_len
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_global(local_preseed, 23, h, buf, buf_len, shfl, thr_id);
+    *value = 64; //salt_len
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_global(local_preseed + 23, 16, h, buf, buf_len, shfl, thr_id);
+    *value = 0; //secret_len
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
+    *value = 0; //ad_len
+    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
+
+    blake2b_final_local(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, shfl, thr_id);
+
+    if (thr_id == 0) {
+        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
+        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+    }
+
+    blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, (__local ulong *)&local_mem[20]);
+}
+
+__kernel void posthash (
+        __global uint *hash,
+        __global uint *out,
+        __local ulong *blake_shared) {
+
+	int hash_id = get_group_id(0);
+	int thread = get_local_id(0);
+
+    __global uint *local_hash = hash + hash_id * ARGON2_RAW_LENGTH;
+    __global uint *local_out = out + hash_id * BLOCK_SIZE_UINT;
+
+    blake2b_digestLong_global(local_hash, ARGON2_RAW_LENGTH, local_out, ARGON2_DWORDS_IN_BLOCK, thread, blake_shared);
+}
+
 )OCL";
