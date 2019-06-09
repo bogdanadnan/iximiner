@@ -800,19 +800,16 @@ void amdgcn_hasher::__run(amdgcn_device_info *device, int thread_id) {
 				hash_factory.set_threads(device->profile_info.threads_profile_4_4_16384);
 			}
 
-			vector<string> hashes = hash_factory.generate_hashes(*profile, input.base, input.base);
+			vector<string> hashes;
+			int hash_count = hash_factory.generate_hashes(*profile, input, hashes);
 
 			if (device->error != CL_SUCCESS) {
 				LOG("Error running kernel: (" + to_string(device->error) + ")" + device->error_message);
 				__running = false;
 				exit(0);
 			}
-			vector<hash_data> stored_hashes;
-			for(vector<string>::iterator it = hashes.begin(); it != hashes.end(); ++it) {
-				input.hash = *it;
-				stored_hashes.push_back(input);
-			}
-			_store_hash(stored_hashes, device->device_index);
+
+			_store_hash(hash_count, hashes, device->device_index);
 		}
 	}
 
