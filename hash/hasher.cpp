@@ -103,7 +103,7 @@ hash_data hasher::_get_input() {
     __input_mutex.unlock();
 
     hash_data new_hash;
-    new_hash.nonce = new_hash.hash = "";
+    new_hash.nonce = "";
     new_hash.block_checksum = tmp_block_checksum;
     new_hash.hash_ceil = tmp_hash_ceil;
     new_hash.base = tmp_base;

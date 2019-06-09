@@ -12,7 +12,6 @@ struct hash_data {
     string block_checksum;
     string hash_ceil;
     string base;
-    string hash;
 };
 
 struct hash_timing {

@@ -94,9 +94,7 @@ int argon2::encode_hashes(const argon2profile &profile, hash_data &input, vector
             for (int i = 0; i < __threads; i++) {
                 hash = __seed_memory + i * ARGON2_RAW_LENGTH;
                 if(__check_hash(hash, ARGON2_RAW_LENGTH, byte_hash_ceil, hash_ceil_sz)) {
-                    hex::encode(hash, ARGON2_RAW_LENGTH, encoded_hash);
                     hex::encode(__inputs + i * IXIAN_NONCE_SIZE, IXIAN_NONCE_SIZE, encoded_nonce);
-                    input.hash = encoded_hash;
                     input.nonce = encoded_nonce;
                     results.push_back(input);
                 }
@@ -116,9 +114,7 @@ int argon2::encode_hashes(const argon2profile &profile, hash_data &input, vector
 
 
                 if(__check_hash(raw_hash, ARGON2_RAW_LENGTH, byte_hash_ceil, hash_ceil_sz)) {
-                    hex::encode(raw_hash, ARGON2_RAW_LENGTH, encoded_hash);
                     hex::encode(__inputs + i * IXIAN_NONCE_SIZE, IXIAN_NONCE_SIZE, encoded_nonce);
-                    input.hash = encoded_hash;
                     input.nonce = encoded_nonce;
                     results.push_back(input);
                 }
