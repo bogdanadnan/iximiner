@@ -79,7 +79,7 @@ miner::miner(arguments &args) : __args(args), __client(args, [&]() { return this
     vector<hasher*> active_hashers = hasher::get_active_hashers();
 
     for (vector<hasher *>::iterator it = active_hashers.begin(); it != active_hashers.end(); ++it) {
-        (*it)->set_input(__height, __block_checksum, __solver_address, __recommendation);
+        (*it)->set_input(__height, __block_checksum, __solver_address, __recommendation, __hash_ceil);
     }
 
     __blocks_count = 1;
@@ -115,29 +115,24 @@ void miner::run() {
                 if (hash->block_checksum != __block_checksum) //the block expired
                     continue;
 
-                bool result = miner::check_hash(hash->hash, __hash_ceil);
-                if (result) {
-                    if (__args.is_verbose())
-                        LOG("--> Submitting nonce: " + hash->nonce);
-                    pool_submit_result reply = __client.submit(hash->nonce, __height);
-                    if (reply.success) {
-                        if (false) { // TODO check what is needed to see if this is block or share
-                            if (__args.is_verbose()) LOG("--> Block found.");
-                            __found++;
-                        } else {
-                            if (__args.is_verbose()) LOG("--> Nonce confirmed.");
-                            __confirmed++;
-                        }
+                if (__args.is_verbose())
+                    LOG("--> Submitting nonce: " + hash->nonce);
+                pool_submit_result reply = __client.submit(hash->nonce, __height);
+                if (reply.success) {
+                    if (false) { // TODO check what is needed to see if this is block or share
+                        if (__args.is_verbose()) LOG("--> Block found.");
+                        __found++;
                     } else {
-                        if (__args.is_verbose()) {
-                            LOG("--> The nonce did not confirm.");
-                            LOG("--> Pool response: ");
-                            LOG(reply.pool_response);
-                        }
-                        __rejected++;
-                        if (hash->realloc_flag != NULL)
-                            *(hash->realloc_flag) = true;
+                        if (__args.is_verbose()) LOG("--> Nonce confirmed.");
+                        __confirmed++;
                     }
+                } else {
+                    if (__args.is_verbose()) {
+                        LOG("--> The nonce did not confirm.");
+                        LOG("--> Pool response: ");
+                        LOG(reply.pool_response);
+                    }
+                    __rejected++;
                 }
             }
         }
@@ -145,7 +140,7 @@ void miner::run() {
         if (microseconds() - last_update > __args.update_interval()) {
             if (__update_pool_data() || __recommendation == "pause") {
                 for (vector<hasher *>::iterator it = hashers.begin(); it != hashers.end(); ++it) {
-                    (*it)->set_input(__height, __block_checksum, __solver_address, __recommendation);
+                    (*it)->set_input(__height, __block_checksum, __solver_address, __recommendation, __hash_ceil);
                 }
 
                 if(__recommendation != "pause")
@@ -185,25 +180,6 @@ string miner::calc_hash_ceil(uint64_t difficulty) {
     char output[30];
     hex::encode(hash_ceil, 10, output);
     return string(output);
-}
-
-bool miner::check_hash(const string &hash, const string &hash_ceil) {
-    unsigned char byte_hash[32];
-    unsigned char byte_hash_ceil[10];
-    int hash_sz = hex::decode(hash.c_str(), byte_hash, 32);
-    int hash_ceil_sz = hex::decode(hash_ceil.c_str(), byte_hash_ceil, 10);
-
-    if (hash_sz < 32)
-    {
-        return false;
-    }
-    for (int i = 0; i < hash_sz; i++)
-    {
-        unsigned char cb = i < hash_ceil_sz ? byte_hash_ceil[i] : (unsigned char)0xff;
-        if (cb > byte_hash[i]) return true;
-        if (cb < byte_hash[i]) return false;
-    }
-    return true;
 }
 
 bool miner::__update_pool_data() {

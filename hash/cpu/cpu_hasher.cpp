@@ -188,38 +188,19 @@ void cpu_hasher::__run() {
 
     argon2 hash_factory(NULL, __argon2_blocks_filler_ptr, NULL, mem, NULL);
 
-    bool should_realloc = false;
-
     while(__running) {
         if(_should_pause()) {
             this_thread::sleep_for(chrono::milliseconds(100));
             continue;
         }
 
-        if(should_realloc) {
-            void *new_buffer;
-            mem = __allocate_memory(new_buffer);
-            if(mem == NULL) {
-                LOG("Error allocating memory");
-                __running = false;
-                exit(0);
-            }
-            hash_factory.set_seed_memory((uint8_t *)mem);
-            free(buffer);
-            buffer = new_buffer;
-            should_realloc = false;
-        }
-
         hash_data input = _get_input();
         argon2profile *profile = argon2profile_default;
 
         if(!input.block_checksum.empty()) {
-            vector<hash_data> hashes = hash_factory.generate_hashes(*profile, input);
-
-            for(vector<hash_data>::iterator it = hashes.begin(); it != hashes.end(); ++it) {
-                it->realloc_flag = &should_realloc;
-            }
-            _store_hash(hashes, 0);
+            vector<hash_data> hashes;
+            int hash_count = hash_factory.generate_hashes(*profile, input, hashes);
+            _store_hash(hash_count, hashes, 0);
         }
     }
 
