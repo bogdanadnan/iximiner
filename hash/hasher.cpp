@@ -23,6 +23,7 @@ hasher::hasher() {
     __block_checksum = "";
     __solver_address = "";
     __base = "";
+    __hash_ceil = "";
 
     __pause = false;
     __is_running = false;
@@ -66,7 +67,7 @@ string hasher::get_info() {
     return _description;
 }
 
-void hasher::set_input(uint64_t height, const string &block_checksum, const string &solver_address, const string &recommendation) {
+void hasher::set_input(uint64_t height, const string &block_checksum, const string &solver_address, const string &recommendation, const string &hash_ceil) {
     bool new_block = false;
     __input_mutex.lock();
     new_block = height != __height;
@@ -74,6 +75,7 @@ void hasher::set_input(uint64_t height, const string &block_checksum, const stri
     __block_checksum = block_checksum;
     __solver_address = solver_address;
     __base = __make_base(block_checksum, solver_address);
+    __hash_ceil = hash_ceil;
     __pause = (recommendation == "pause");
     __input_mutex.unlock();
 
@@ -92,18 +94,18 @@ void hasher::set_input(uint64_t height, const string &block_checksum, const stri
 
 hash_data hasher::_get_input() {
     string tmp_block_checksum = "";
-    string tmp_solver_address = "";
+    string tmp_hash_ceil = "";
     string tmp_base = "";
     __input_mutex.lock();
     tmp_block_checksum = __block_checksum;
-    tmp_solver_address = __solver_address;
+    tmp_hash_ceil = __hash_ceil;
     tmp_base = __base;
     __input_mutex.unlock();
 
     hash_data new_hash;
-    new_hash.nonce = new_hash.hash = "";
+    new_hash.nonce = "";
     new_hash.block_checksum = tmp_block_checksum;
-    new_hash.solver_address = tmp_solver_address;
+    new_hash.hash_ceil = tmp_hash_ceil;
     new_hash.base = tmp_base;
 
     return new_hash;
@@ -149,29 +151,16 @@ vector<hash_data> hasher::get_hashes() {
     return tmp;
 }
 
-void hasher::_store_hash(const hash_data &hash, int device_id) {
-	__hashes_mutex.lock();
-	__hashes.push_back(hash);
-	__hash_count++;
-    __device_infos[device_id].hashcount++;
-    __total_hash_count++;
-
-	__update_hashrate();
-
-	__hashes_mutex.unlock();
-}
-
-void hasher::_store_hash(const vector<hash_data> &hashes, int device_id) {
-    int hash_sz = hashes.size();
-	if (hash_sz == 0) return;
+void hasher::_store_hash(int hash_count, const vector<hash_data> &succeded, int device_id) {
+	if (hash_count == 0) return;
 
 	__hashes_mutex.lock();
-	__hashes.insert(__hashes.end(), hashes.begin(), hashes.end());
+	__hashes.insert(__hashes.end(), succeded.begin(), succeded.end());
 
-	__hash_count += hash_sz;
-	__device_infos[device_id].hashcount += hash_sz;
+	__hash_count += hash_count;
+	__device_infos[device_id].hashcount += hash_count;
 
-    __total_hash_count += hash_sz;
+    __total_hash_count += hash_count;
 
 	__update_hashrate();
 
@@ -304,4 +293,3 @@ void hasher::_store_device_info(int device_id, device_info device) {
     __device_infos[device_id] = device;
     __hashes_mutex.unlock();
 }
-
