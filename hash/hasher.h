@@ -8,15 +8,10 @@
 #include "argon2/defs.h"
 
 struct hash_data {
-    hash_data() {
-        realloc_flag = NULL;
-    };
     string nonce;
     string block_checksum;
-    string solver_address;
+    string hash_ceil;
     string base;
-    string hash;
-    bool *realloc_flag;
 };
 
 struct hash_timing {
@@ -53,7 +48,7 @@ public:
 	string get_subtype(bool short_name = false);
 	int get_priority();
     string get_info();
-    void set_input(uint64_t height, const string &block_checksum, const string &solver_address, const string &recommendation);
+    void set_input(uint64_t height, const string &block_checksum, const string &solver_address, const string &recommendation, const string &hash_ceil);
 
     double get_current_hash_rate();
     double get_avg_hash_rate();
@@ -77,8 +72,7 @@ protected:
 	int _priority;
     string _description;
 
-	void _store_hash(const hash_data &hash, int device_id);
-	void _store_hash(const vector<hash_data> &hashes, int device_id);
+	void _store_hash(int hash_count, const vector<hash_data> &succeded, int device_id);
 
 	void _store_device_info(int device_id, device_info device);
 
@@ -98,6 +92,7 @@ private:
     string __block_checksum;
     string __solver_address;
     string __base;
+    string __hash_ceil;
     bool __pause;
     bool __is_running;
 

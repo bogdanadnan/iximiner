@@ -771,7 +771,8 @@ void opencl_hasher::__run(opencl_device_info *device, int thread_id) {
             hash_factory.set_seed_memory_offset(4 * ARGON2_BLOCK_SIZE);
             hash_factory.set_threads(device->profile_info.threads);
 
-            vector<hash_data> hashes = hash_factory.generate_hashes(*profile, input);
+            vector<hash_data> hashes;
+            int hash_count = hash_factory.generate_hashes(*profile, input, hashes);
 
 			if (device->error != CL_SUCCESS) {
 				LOG("Error running kernel: (" + to_string(device->error) + ")" + device->error_message);
@@ -779,7 +780,7 @@ void opencl_hasher::__run(opencl_device_info *device, int thread_id) {
 				exit(0);
 			}
 
-			_store_hash(hashes, device->device_index);
+			_store_hash(hash_count, hashes, device->device_index);
 		}
     }
 	free(memory);
