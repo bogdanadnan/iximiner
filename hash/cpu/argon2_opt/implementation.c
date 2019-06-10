@@ -32,7 +32,7 @@ void xor_block(block *dst, const block *src) {
 
 #if defined(__AVX512F__)
 static void fill_block(__m512i *state, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep, int32_t with_xor) {
     __m512i block_XY[ARGON2_512BIT_WORDS_IN_BLOCK];
     unsigned int i;
 
@@ -53,14 +53,21 @@ static void fill_block(__m512i *state, const block *ref_block,
             state[2 * 4 + i], state[2 * 5 + i], state[2 * 6 + i], state[2 * 7 + i]);
     }
 
-    for (i = 0; i < ARGON2_512BIT_WORDS_IN_BLOCK; i++) {
-        state[i] = _mm512_xor_si512(state[i], block_XY[i]);
-        _mm512_storeu_si512((__m512i *)next_block->v + i, state[i]);
+    if(keep) {
+        for (i = 0; i < ARGON2_512BIT_WORDS_IN_BLOCK; i++) {
+            state[i] = _mm512_xor_si512(state[i], block_XY[i]);
+            _mm512_storeu_si512((__m512i *)next_block->v + i, state[i]);
+        }
+    }
+    else {
+        for (i = 0; i < ARGON2_512BIT_WORDS_IN_BLOCK; i++) {
+            state[i] = _mm512_xor_si512(state[i], block_XY[i]);
+        }
     }
 }
 #elif defined(__AVX2__)
 static inline void fill_block(__m256i *state, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep) {
     __m256i block_XY[ARGON2_HWORDS_IN_BLOCK];
     unsigned int i;
 
@@ -79,9 +86,16 @@ static inline void fill_block(__m256i *state, const block *ref_block,
                        state[16 + i], state[20 + i], state[24 + i], state[28 + i]);
     }
 
-    for (i = 0; i < ARGON2_HWORDS_IN_BLOCK; i++) {
-        state[i] = _mm256_xor_si256(state[i], block_XY[i]);
-        _mm256_store_si256((__m256i *)next_block->v + i, state[i]);
+    if(keep) {
+        for (i = 0; i < ARGON2_HWORDS_IN_BLOCK; i++) {
+            state[i] = _mm256_xor_si256(state[i], block_XY[i]);
+            _mm256_store_si256((__m256i *)next_block->v + i, state[i]);
+        }
+    }
+    else {
+        for (i = 0; i < ARGON2_HWORDS_IN_BLOCK; i++) {
+            state[i] = _mm256_xor_si256(state[i], block_XY[i]);
+        }
     }
 }
 #elif defined(__AVX__)
@@ -90,7 +104,7 @@ static inline void fill_block(__m256i *state, const block *ref_block,
 #define D2I(x) _mm256_castpd_si256(x)
 
 static void fill_block(__m128i *state, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep) {
     __m128i block_XY[ARGON2_OWORDS_IN_BLOCK];
     unsigned int i;
 
@@ -116,18 +130,26 @@ static void fill_block(__m128i *state, const block *ref_block,
             state[8 * 6 + i], state[8 * 7 + i]);
     }
 
-    for (i = 0; i < ARGON2_OWORDS_IN_BLOCK / 2; i++) {
-        t = D2I(_mm256_xor_pd(I2D(_mm256_loadu_si256(s256 + i)), \
+    if(keep) {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK / 2; i++) {
+            t = D2I(_mm256_xor_pd(I2D(_mm256_loadu_si256(s256 + i)), \
             I2D(_mm256_loadu_si256(block256 + i))));
 
-        _mm256_storeu_si256(s256 + i, t);
-        _mm256_storeu_si256((__m256i *)next_block->v + i, t);
+            _mm256_storeu_si256(s256 + i, t);
+            _mm256_storeu_si256((__m256i *) next_block->v + i, t);
+        }
+    }
+    else {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK / 2; i++) {
+            t = D2I(_mm256_xor_pd(I2D(_mm256_loadu_si256(s256 + i)), \
+            I2D(_mm256_loadu_si256(block256 + i))));
+        }
     }
 }
 
 #elif defined(__NEON__)
 static void fill_block(uint64x2_t *state, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep) {
     uint64x2_t block_XY[ARGON2_OWORDS_IN_BLOCK];
     uint64x2_t t0, t1;
 
@@ -149,14 +171,21 @@ static void fill_block(uint64x2_t *state, const block *ref_block,
                      state[8 * 6 + i], state[8 * 7 + i]);
     }
 
-    for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
-        state[i] = veorq_u64(state[i], block_XY[i]);
-        vst1q_u64(next_block->v + i*2, state[i]);
+    if(keep) {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
+            state[i] = veorq_u64(state[i], block_XY[i]);
+            vst1q_u64(next_block->v + i*2, state[i]);
+        }
+    }
+    else {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
+            state[i] = veorq_u64(state[i], block_XY[i]);
+        }
     }
 }
 #else
 static void fill_block(__m128i *state, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep) {
     __m128i block_XY[ARGON2_OWORDS_IN_BLOCK];
     unsigned int i;
 
@@ -177,16 +206,23 @@ static void fill_block(__m128i *state, const block *ref_block,
             state[8 * 6 + i], state[8 * 7 + i]);
     }
 
-    for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
-        state[i] = _mm_xor_si128(state[i], block_XY[i]);
-        _mm_storeu_si128((__m128i *)next_block->v + i, state[i]);
+    if(keep) {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
+            state[i] = _mm_xor_si128(state[i], block_XY[i]);
+            _mm_storeu_si128((__m128i *)next_block->v + i, state[i]);
+        }
+    }
+    else {
+        for (i = 0; i < ARGON2_OWORDS_IN_BLOCK; i++) {
+            state[i] = _mm_xor_si128(state[i], block_XY[i]);
+        }
     }
 }
 #endif
 
 #else
 static void fill_block(block *prev_block, const block *ref_block,
-                       block *next_block) {
+                       block *next_block, int32_t keep) {
     block block_tmp;
     unsigned i;
 
@@ -218,7 +254,9 @@ static void fill_block(block *prev_block, const block *ref_block,
     }
 
     xor_block(prev_block, &block_tmp);
-    copy_block(next_block, prev_block);
+    if(keep) {
+        copy_block(next_block, prev_block);
+    }
 }
 
 #endif
@@ -240,32 +278,47 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
     block state_;
     block *state = &state_;
 #endif
-    int lane_length = profile->mem_cost / profile->thr_cost;
-    int seg_length = lane_length / 4;
+    int lane_length = profile->seg_size * 4;
+    int seg_length = profile->seg_size;
 
     for(int thr = 0; thr < threads;thr++) {
-        block *ref_block = NULL, *curr_block = NULL, *prev_block = NULL;
+        block *ref_block = NULL, *curr_block = NULL;
+
         int32_t ref_idx = 0;
+        int32_t cur_idx = 0;
+        int32_t prev_idx = 0;
+        int32_t seg_type = 0;
+        int32_t suc_idx = 0;
+        int32_t idx = 0;
+        int32_t keep = 1;
 
         block *blocks = (block *)((uint8_t*)memory + thr * profile->memsize);
 
         int32_t *address = profile->block_refs;
 
         for(int s = 0; s < profile->thr_cost * 4; s++) {
-            int32_t seg_start = profile->segments[s * 3];
-            int32_t seg_stop = profile->segments[s * 3 + 1];
+            cur_idx = profile->segments[s * 4];
+            prev_idx = profile->segments[s * 4 + 1];
+            seg_type = profile->segments[s * 4 + 2];
+            suc_idx = profile->segments[s * 4 + 3];
+            keep = 1;
+
+            idx = (s < profile->thr_cost) ? 2 : 0;
+
             int32_t lane = s % profile->thr_cost;
             int32_t slice = s / profile->thr_cost;
 
-            address = &profile->block_refs[seg_start * 4];
+            memcpy(state, (void *) (blocks + prev_idx), ARGON2_BLOCK_SIZE);
 
-            prev_block = blocks + address[1];
-            memcpy(state, (void *) prev_block, ARGON2_BLOCK_SIZE);
+            if(seg_type == 0) {
+                if(s < profile->thr_cost)
+                    address = &profile->block_refs[(s * (profile->seg_size - 2)) * 3];
+                else
+                    address = &profile->block_refs[(profile->thr_cost * (profile->seg_size - 2) + (s - profile->thr_cost) * profile->seg_size) * 3];
+            }
 
-            for (int i = seg_length - (seg_stop - seg_start - 1) - 1; i < seg_length; ++i, address += 4) {
-                ref_idx = address[2];
-
-                if (ref_idx == -1) { // data dependent addressing
+            for (int i = idx; i < seg_length; ++i, cur_idx ++) {
+                if (seg_type == 1) { // data dependent addressing
 #ifndef  BUILD_REF
 #if defined(__AVX512F__)
                     _mm512_storeu_si512(buff_512, state[0]);
@@ -299,20 +352,32 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
 
                     ref_idx = ref_lane * lane_length + relative_position % lane_length;
                 }
+                else {
+                    ref_idx = address[1];
+                    if(suc_idx == 0)
+                        cur_idx = address[0];
+                    keep = address[2];
+
+                    address += 3;
+                }
 
                 ref_block = blocks + ref_idx;
-                curr_block = blocks + address[0];
-                fill_block(state, ref_block, curr_block);
+                curr_block = blocks + cur_idx;
+                fill_block(state, ref_block, curr_block, keep);
             }
         }
 
-        for(; address < (profile->block_refs + profile->block_refs_size * 4); address += 4) {
-            if (address[0] == -2) {
-                prev_block = blocks + address[1];
-                ref_block = blocks + address[2];
-                xor_block(prev_block, ref_block);
+        uint32_t dst = -1;
+        for(; address < (profile->block_refs + profile->block_refs_size * 3); address += 3) {
+            if (address[2] == -1) {
+                curr_block = blocks + address[0];
+                ref_block = blocks + address[1];
+                dst = address[0];
+                xor_block(curr_block, ref_block);
             }
         }
+        if(dst != -1)
+            copy_block(blocks, blocks + dst);
     }
 
     return memory;

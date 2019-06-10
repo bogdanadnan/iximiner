@@ -348,9 +348,13 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 							uint32_t *segments,
 							int memsize,
 							int threads_per_chunk,
-							int thread_idx) {
-	__shared__ uint32_t state[2 * BLOCK_SIZE_UINT];
-	__shared__ uint32_t addr[2 * 32];
+							int thread_idx,
+                            int seg_length,
+                            int lanes) {
+    extern __shared__ uint32_t shared[]; // lanes * BLOCK_SIZE_UINT + lanes * 32
+
+	uint32_t *state = shared;
+	uint32_t *addr = &shared[lanes * BLOCK_SIZE_UINT];
 
 	uint4 tmp_a, tmp_b, tmp_c, tmp_d, tmp_p, tmp_q;
 
@@ -917,12 +921,12 @@ void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void
 	cuda_device_info *device = gpumgmt_thread->device;
 	cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
 
-	uint32_t memsize = (uint32_t)argon2profile_default->memsize;
-	uint32_t parallelism = argon2profile_default->thr_cost;
+	uint32_t memsize = (uint32_t)profile->memsize;
+	uint32_t parallelism = profile->thr_cost;
 
     size_t work_items = KERNEL_WORKGROUP_SIZE * parallelism;
 
-	fill_blocks <<<threads, work_items, 0, stream>>> ((uint32_t*)device->arguments.memory_chunk_0,
+	fill_blocks <<<threads, work_items, profile->thr_cost * (ARGON2_BLOCK_SIZE + 32), stream>>> ((uint32_t*)device->arguments.memory_chunk_0,
 			(uint32_t*)device->arguments.memory_chunk_1,
 			(uint32_t*)device->arguments.memory_chunk_2,
 			(uint32_t*)device->arguments.memory_chunk_3,
@@ -932,7 +936,10 @@ void *cuda_kernel_filler(void *memory, int threads, argon2profile *profile, void
 			device->arguments.out_memory[gpumgmt_thread->thread_id],
 			device->arguments.address,
 			device->arguments.segments,
-			memsize, device->profile_info.threads_per_chunk, gpumgmt_thread->threads_idx);
+			memsize, device->profile_info.threads_per_chunk,
+            gpumgmt_thread->threads_idx,
+            profile->seg_size,
+            profile->thr_cost);
 
 	return memory;
 }

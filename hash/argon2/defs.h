@@ -33,7 +33,9 @@ typedef struct Argon2Profile {
     int32_t *block_refs;
     size_t block_refs_size;
     char profile_name[15];
-    int32_t *segments; // { start, stop (excluding), with_xor }
+    int32_t *segments; // { start segment / current block, stop segment (excluding) / previous block, addressing type = 0 -> i, 1 -> d }
+    uint32_t seg_size;
+    uint32_t with_xor;
 } argon2profile;
 
 extern DLLEXPORT argon2profile argon2profile_4_4_16384;
