@@ -19,8 +19,6 @@ public:
     string get_status();
 
 	static string calc_hash_ceil(uint64_t difficulty);
-	static bool check_hash(const string &hash, const string &hash_ceil);
-
 private:
     bool __update_pool_data();
     bool __display_report();

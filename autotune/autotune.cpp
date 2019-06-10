@@ -40,7 +40,7 @@ void autotune::run() {
 	    initialized = selected_hasher->initialize();
         if (initialized) {
             selected_hasher->configure(__args);
-            selected_hasher->set_input(0, "BnilA6Sju93AWcWxaRf7w1U3GmChGDXdLgDVk97wjt5M3MXmJH1nnzdFP1Y=", "AUWgIEMwWJxIepw3U8BwnTWAkKtNWKkKlbPwWaGabwoVmrvKjosYfMKu8Y0uM0tU", "mine");
+            selected_hasher->set_input(0, "BnilA6Sju93AWcWxaRf7w1U3GmChGDXdLgDVk97wjt5M3MXmJH1nnzdFP1Y=", "AUWgIEMwWJxIepw3U8BwnTWAkKtNWKkKlbPwWaGabwoVmrvKjosYfMKu8Y0uM0tU", "mine", "");
         }
 		LOG("Compute unit: " + selected_hasher->get_type() + " - " + selected_hasher->get_subtype());
 		LOG(selected_hasher->get_info());
