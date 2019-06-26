@@ -36,11 +36,12 @@ typedef struct Argon2Profile {
     char profile_name[15];
     int32_t *segments; // { start segment / current block, stop segment (excluding) / previous block, addressing type = 0 -> i, 1 -> d }
     uint32_t seg_size;
-    uint32_t with_xor;
+    uint32_t seg_count;
+    uint32_t succ_idx; // 0 - idx are precalculated, 1 - idx are successive
+    int pwd_len; // in dwords
+    int salt_len; // in dwords
 } argon2profile;
 
-extern DLLEXPORT argon2profile argon2profile_4_4_16384;
-extern DLLEXPORT argon2profile argon2profile_1_1_524288;
 extern DLLEXPORT argon2profile argon2profile_1_2_1024;
 extern DLLEXPORT argon2profile *argon2profile_default;
 

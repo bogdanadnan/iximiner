@@ -524,15 +524,15 @@ int32_t blocks_refs_1_2_1024[] = {
         1023, 511, -1
 };
 
-int32_t segments_1_2_1024[] = { // current_idx, previous_idx, idx_type 0=i 1=d, successive_idx
-    2, 1, 0, 1,
-    514, 513, 0, 1,
-    128, 127, 0, 1,
-    640, 639, 0, 1,
-    256, 255, 1, 1,
-    768, 767, 1, 1,
-    384, 383, 1, 1,
-    896, 895, 1, 1
+int32_t segments_1_2_1024[] = { // current_idx, previous_idx, seg_type 0=i 1=d
+    2, 1, 0,
+    514, 513, 0,
+    128, 127, 0,
+    640, 639, 0,
+    256, 255, 1,
+    768, 767, 1,
+    384, 383, 1,
+    896, 895, 1
 };
 
 DLLEXPORT argon2profile argon2profile_1_2_1024 = {
@@ -545,7 +545,10 @@ DLLEXPORT argon2profile argon2profile_1_2_1024 = {
     "1_2_1024",
     segments_1_2_1024,
     128,
-    -1
+    8,
+    1,
+    23,
+    16
 };
 
 DLLEXPORT argon2profile *argon2profile_default = &argon2profile_1_2_1024;
