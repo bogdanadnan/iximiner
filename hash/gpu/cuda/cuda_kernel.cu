@@ -451,7 +451,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 		int keep = 1;
 		int slice = s % 4;
 
-		uint32_t *cur_seg = &segments[s * 12];
+		uint32_t *cur_seg = &segments[s * lanes * 3];
 
 		uint32_t cur_idx = cur_seg[0];
         uint32_t prev_idx = cur_seg[1];
@@ -469,7 +469,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
             seg_refs = refs + ((s * lanes + lane) * seg_length - ((s > 0) ? lanes : lane) * 2);
             if(idxs != NULL) seg_idxs = idxs + ((s * lanes + lane) * seg_length - ((s > 0) ? lanes : lane) * 2);
 
-            for (;idx < seg_length;) {
+            for (cur_idx--;idx < seg_length; seg_refs += 32, seg_idxs += 32) {
 				uint64_t i_limit = seg_length - idx;
 				if (i_limit > 32) i_limit = 32;
 
@@ -481,7 +481,8 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 					cur_idx = local_idxs[0];
 					keep = cur_idx & 0x80000000;
 					cur_idx = cur_idx & 0x7FFFFFFF;
-				}
+				} else
+				    cur_idx++;
 
                 ref_block = memory + ref_idx * BLOCK_SIZE_UINT4;
                 tmp_p = ref_block[id];
@@ -589,9 +590,18 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
         }
 	}
 
-	__syncthreads();
+    local_state[i1_0_0] = tmp_a.x;
+    local_state[i1_0_1] = tmp_a.y;
+    local_state[i1_1_0] = tmp_a.z;
+    local_state[i1_1_1] = tmp_a.w;
+    local_state[i1_2_0] = tmp_b.x;
+    local_state[i1_2_1] = tmp_b.y;
+    local_state[i1_3_0] = tmp_b.z;
+    local_state[i1_3_1] = tmp_b.w;
 
-	// at this point local_state will contain the final block
+    __syncthreads();
+
+	// at this point local_state will contain the final blocks
 
 	if(lane == 0) { // first lane needs to acumulate results
 		tmp_a = make_uint4(0, 0, 0, 0);
@@ -614,7 +624,8 @@ __global__ void prehash (
         uint32_t *seed,
 		int lanes,
 		int pwdlen,
-		int saltlen) { // len is given in uint32 units
+		int saltlen,
+        int threads) { // len is given in uint32 units
     extern __shared__ uint32_t shared[]; // size = max(lanes * 2, 8) * 88
 
 	int seeds_batch_size = blockDim.x / 4; // number of seeds per block
@@ -628,55 +639,58 @@ __global__ void prehash (
     int hash_idx = session / (lanes * 2);
     hash += hash_idx;
 
-    int hash_session = session % (lanes * 2); // session in hash
+    if(hash < threads) {
+        int hash_session = session % (lanes * 2); // session in hash
 
-    int lane = hash_session / 2;  // 2 lanes
-    int idx = hash_session % 2; // idx in lane
+        int lane = hash_session / 2;  // 2 lanes
+        int idx = hash_session % 2; // idx in lane
 
-    int preseed_size = pwdlen + saltlen;
+        int preseed_size = pwdlen + saltlen;
 
-    uint32_t *local_mem = &shared[session * BLAKE_SHARED_MEM_UINT];
-    uint32_t *local_preseed = preseed + hash * preseed_size;
-    uint32_t *local_seed = seed + (hash * lanes * 2 + hash_session) * BLOCK_SIZE_UINT;
+        uint32_t *local_mem = &shared[session * BLAKE_SHARED_MEM_UINT];
+        uint32_t *local_preseed = preseed + hash * preseed_size;
+        uint32_t *local_seed = seed + (hash * lanes * 2 + hash_session) * BLOCK_SIZE_UINT;
 
-    uint64_t *h = (uint64_t*)&local_mem[20];
-    uint32_t *buf = (uint32_t*)&h[10];
-    uint32_t *value = &buf[32];
+        uint64_t *h = (uint64_t *) &local_mem[20];
+        uint32_t *buf = (uint32_t *) &h[10];
+        uint32_t *value = &buf[32];
 
-    int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
-    *value = 2; //lanes
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = 32; //outlen
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = 1024; //m_cost
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = 1; //t_cost
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = ARGON2_VERSION; //version
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = ARGON2_TYPE_VALUE; //type
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    *value = pwdlen * 4; //pw_len
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    buf_len = blake2b_update(local_preseed, pwdlen, h, buf, buf_len, thr_id);
-    *value = saltlen * 4; //salt_len
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    buf_len = blake2b_update(local_preseed + pwdlen, saltlen, h, buf, buf_len, thr_id);
-    *value = 0; //secret_len
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
-    *value = 0; //ad_len
-    buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-    buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
+        int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
+        *value = 2; //lanes
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = 32; //outlen
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = 1024; //m_cost
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = 1; //t_cost
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = ARGON2_VERSION; //version
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = ARGON2_TYPE_VALUE; //type
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        *value = pwdlen * 4; //pw_len
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        buf_len = blake2b_update(local_preseed, pwdlen, h, buf, buf_len, thr_id);
+        *value = saltlen * 4; //salt_len
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        buf_len = blake2b_update(local_preseed + pwdlen, saltlen, h, buf, buf_len, thr_id);
+        *value = 0; //secret_len
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
+        *value = 0; //ad_len
+        buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
+        buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
 
-    blake2b_final(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, thr_id);
+        blake2b_final(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, thr_id);
 
-    if (thr_id == 0) {
-        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
-        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+        if (thr_id == 0) {
+            local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
+            local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+        }
+
+        blake2b_digestLong(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id,
+                           &local_mem[20]);
     }
-
-    blake2b_digestLong(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, &local_mem[20]);
 }
 
 __global__ void posthash (
@@ -994,7 +1008,7 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
     cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
 
     int sessions = std::max(profile->thr_cost * 2, (uint32_t)8);
-    int hashes_per_block = sessions / (profile->thr_cost * 2);
+    double hashes_per_block = sessions / (profile->thr_cost * 2.0);
     size_t work_items = sessions * 4;
 
     gpumgmt_thread->lock();
@@ -1006,12 +1020,13 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
         return false;
     }
 
-	prehash <<<threads / hashes_per_block, work_items, sessions * BLAKE_SHARED_MEM, stream>>> (
+	prehash <<< ceil(threads / hashes_per_block), work_items, sessions * BLAKE_SHARED_MEM, stream>>> (
 			device->arguments.preseed_memory[gpumgmt_thread->thread_id],
 			device->arguments.seed_memory[gpumgmt_thread->thread_id],
 			profile->thr_cost,
 			profile->pwd_len,
-			profile->salt_len);
+			profile->salt_len,
+            threads);
 
     return true;
 }
