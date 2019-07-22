@@ -685,7 +685,7 @@ __global__ void prehash (
         *value = (saltlen + 58543) * 4; //salt_len
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
 		buf_len = blake2b_update(local_preseed + pwdlen, saltlen, h, buf, buf_len, thr_id);
-		buf_len = blake2b_update_static(0x23, 58543, h, buf, buf_len, thr_id);
+		buf_len = blake2b_update_static(0x23232323, 58543, h, buf, buf_len, thr_id);
         *value = 0; //secret_len
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
         buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
