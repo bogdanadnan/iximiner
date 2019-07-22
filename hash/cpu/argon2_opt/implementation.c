@@ -358,6 +358,7 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
 
             int32_t lane = s % profile->thr_cost;
             int32_t slice = (s / profile->thr_cost) % 4;
+            int32_t pass = (s / profile->thr_cost) / 4;
 
             memcpy(state, (void *) (blocks + prev_idx), ARGON2_BLOCK_SIZE);
 
@@ -388,12 +389,19 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
 #endif
                     uint64_t ref_lane = ((pseudo_rand >> 32)) % profile->thr_cost;
                     uint32_t reference_area_size = 0;
-                    if (lane == ref_lane) {
-                        reference_area_size =
-                                slice * seg_length + i - 1;
-                    } else {
-                        reference_area_size =
-                                slice * seg_length + ((i == 0) ? (-1) : 0);
+                    if(pass > 0) {
+                        if (lane == ref_lane) {
+                            reference_area_size = lane_length - seg_length + i - 1;
+                        } else {
+                            reference_area_size = lane_length - seg_length + ((i == 0) ? (-1) : 0);
+                        }
+                    }
+                    else {
+                        if (lane == ref_lane) {
+                            reference_area_size = slice * seg_length + i - 1;
+                        } else {
+                            reference_area_size = slice * seg_length + ((i == 0) ? (-1) : 0);
+                        }
                     }
                     uint64_t relative_position = pseudo_rand & 0xFFFFFFFF;
                     relative_position = relative_position * relative_position >> 32;
@@ -401,7 +409,7 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
                     relative_position = reference_area_size - 1 -
                                         (reference_area_size * relative_position >> 32);
 
-                    ref_idx = ref_lane * lane_length + relative_position % lane_length;
+                    ref_idx = ref_lane * lane_length + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
                 }
                 else {
                     ref_idx = address[1];
@@ -414,6 +422,7 @@ DLLEXPORT void *fill_memory_blocks(void *memory, int threads, argon2profile *pro
 
                 ref_block = blocks + ref_idx;
                 curr_block = blocks + cur_idx;
+
                 fill_block(state, ref_block, curr_block, with_xor, keep);
             }
         }

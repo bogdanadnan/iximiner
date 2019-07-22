@@ -2,10 +2,6 @@
 // Created by Haifa Bogdan Adnan on 30/05/2019.
 //
 
-//
-// Created by Haifa Bogdan Adnan on 05/08/2018.
-//
-
 #include <stdint.h>
 #include <stddef.h>
 #include "../../common/dllexport.h"
@@ -551,4 +547,4 @@ DLLEXPORT argon2profile argon2profile_1_2_1024 = {
     16
 };
 
-DLLEXPORT argon2profile *argon2profile_default = &argon2profile_1_2_1024;
+//DLLEXPORT argon2profile *argon2profile_default = &argon2profile_1_2_1024;

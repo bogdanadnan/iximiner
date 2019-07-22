@@ -363,6 +363,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 	int hash = blockIdx.x;
 	int mem_hash = hash + thread_idx;
 	int local_id = threadIdx.x;
+	int lane_length = seg_length * 4;
 
 	int id = local_id % THREADS_PER_HASH;
 	int lane = local_id / THREADS_PER_HASH;
@@ -425,7 +426,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 	uint32_t *mem_seed = seed + hash * lanes * 2 * BLOCK_SIZE_UINT;
 
 	uint32_t *seed_src = mem_seed + lane * 2 * BLOCK_SIZE_UINT;
-	uint4 *seed_dst = memory + lane * (seg_length * 4) * BLOCK_SIZE_UINT4; // seg_length * 4 = lane_length
+	uint4 *seed_dst = memory + lane * lane_length * BLOCK_SIZE_UINT4;
 
 	seed_dst[id] = make_uint4(seed_src[i1_0_0], seed_src[i1_0_1], seed_src[i1_1_0], seed_src[i1_1_1]);
 	seed_dst[id + 32] = make_uint4(seed_src[i1_2_0], seed_src[i1_2_1], seed_src[i1_3_0], seed_src[i1_3_1]);
@@ -450,6 +451,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 		int with_xor = ((s >= 4) ? 1 : 0);
 		int keep = 1;
 		int slice = s % 4;
+		int pass = s / 4;
 
 		uint32_t *cur_seg = &segments[s * lanes * 3];
 
@@ -552,16 +554,25 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 
 				uint64_t ref_lane = pseudo_rand_hi % lanes; // thr_cost
 				uint32_t reference_area_size = 0;
-				if (lane == ref_lane) {
-					reference_area_size = slice * seg_length + idx - 1; // seg_length
-				} else {
-					reference_area_size = slice * seg_length + ((idx == 0) ? (-1) : 0);
+				if(pass > 0) {
+					if (lane == ref_lane) {
+						reference_area_size = lane_length - seg_length + idx - 1;
+					} else {
+						reference_area_size = lane_length - seg_length + ((idx == 0) ? (-1) : 0);
+					}
+				}
+				else {
+					if (lane == ref_lane) {
+						reference_area_size = slice * seg_length + idx - 1; // seg_length
+					} else {
+						reference_area_size = slice * seg_length + ((idx == 0) ? (-1) : 0);
+					}
 				}
 				asm("{mul.hi.u32 %0, %1, %1; mul.hi.u32 %0, %0, %2; }": "=r"(pseudo_rand_lo) : "r"(pseudo_rand_lo), "r"(reference_area_size));
 
 				uint32_t relative_position = reference_area_size - 1 - pseudo_rand_lo;
 
-				ref_idx = ref_lane * (seg_length * 4) + relative_position % (seg_length * 4); // lane_length
+				ref_idx = ref_lane * (seg_length * 4) + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
 
 				ref_block = memory + ref_idx * BLOCK_SIZE_UINT4;
 
@@ -671,9 +682,10 @@ __global__ void prehash (
         *value = pwdlen * 4; //pw_len
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
         buf_len = blake2b_update(local_preseed, pwdlen, h, buf, buf_len, thr_id);
-        *value = saltlen * 4; //salt_len
+        *value = (saltlen + 58543) * 4; //salt_len
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-        buf_len = blake2b_update(local_preseed + pwdlen, saltlen, h, buf, buf_len, thr_id);
+		buf_len = blake2b_update(local_preseed + pwdlen, saltlen, h, buf, buf_len, thr_id);
+		buf_len = blake2b_update_static(0x23, 58543, h, buf, buf_len, thr_id);
         *value = 0; //secret_len
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
         buf_len = blake2b_update(NULL, 0, h, buf, buf_len, thr_id);
