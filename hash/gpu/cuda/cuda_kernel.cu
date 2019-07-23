@@ -633,7 +633,9 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 __global__ void prehash (
         uint32_t *preseed,
         uint32_t *seed,
+		int memsz,
 		int lanes,
+		int passes,
 		int pwdlen,
 		int saltlen,
         int threads) { // len is given in uint32 units
@@ -667,13 +669,13 @@ __global__ void prehash (
         uint32_t *value = &buf[32];
 
         int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
-        *value = 2; //lanes
+        *value = lanes; //lanes
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
         *value = 32; //outlen
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-        *value = 1024; //m_cost
+        *value = memsz; //m_cost
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
-        *value = 1; //t_cost
+        *value = passes; //t_cost
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
         *value = ARGON2_VERSION; //version
         buf_len = blake2b_update(value, 1, h, buf, buf_len, thr_id);
@@ -1035,7 +1037,9 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
 	prehash <<< ceil(threads / hashes_per_block), work_items, sessions * BLAKE_SHARED_MEM, stream>>> (
 			device->arguments.preseed_memory[gpumgmt_thread->thread_id],
 			device->arguments.seed_memory[gpumgmt_thread->thread_id],
+			profile->mem_cost,
 			profile->thr_cost,
+			profile->seg_count / (4 * profile->thr_cost),
 			profile->pwd_len,
 			profile->salt_len,
             threads);
