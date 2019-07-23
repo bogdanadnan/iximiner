@@ -75,7 +75,8 @@ bool cuda_hasher::configure(arguments &args) {
 		stringstream ss;
 		ss << "["<< (index + 1) << "] " << (*d)->device_string;
 		string device_description = ss.str();
-	        (*d)->device_index = index;
+		(*d)->device_index = index;
+        (*d)->profile_info.profile = args.argon2_profile();
 
 		if(filter.size() > 0) {
 			bool found = false;
@@ -207,11 +208,8 @@ cuda_device_info *cuda_hasher::__get_device_info(int device_index) {
 		return device_info;
 	}
 
-    device_info->max_mem_size = totalmem;
     device_info->free_mem_size = freemem;
-    size_t chunk_size = freemem / 4;
-    int hashes_in_chunk = chunk_size / argon2profile_default->memsize;
-    device_info->max_allocable_mem_size = hashes_in_chunk * argon2profile_default->memsize;
+    device_info->max_allocable_mem_size = freemem / 4;
 
     double mem_in_gb = totalmem / 1073741824.0;
     stringstream ss;
@@ -222,7 +220,7 @@ cuda_device_info *cuda_hasher::__get_device_info(int device_index) {
 }
 
 bool cuda_hasher::__setup_device_info(cuda_device_info *device, double intensity) {
-    device->profile_info.threads_per_chunk = (uint32_t)(device->max_allocable_mem_size / argon2profile_default->memsize);
+    device->profile_info.threads_per_chunk = (uint32_t)(device->max_allocable_mem_size / device->profile_info.profile->memsize);
     size_t chunk_size = device->profile_info.threads_per_chunk * argon2profile_default->memsize;
 
     if(chunk_size == 0) {
@@ -243,7 +241,7 @@ bool cuda_hasher::__setup_device_info(cuda_device_info *device, double intensity
     }
 
     device->profile_info.threads = (uint32_t)(max_threads * intensity / 100.0);
-	device->profile_info.threads = (device->profile_info.threads / 2) * 2; // make it divisible by 2
+	device->profile_info.threads = (device->profile_info.threads / 2) * 2; // make it divisible by 2 to allow for parallel kernel execution
 	if(max_threads > 0 && device->profile_info.threads == 0 && intensity > 0)
         device->profile_info.threads = 2;
 
@@ -317,26 +315,23 @@ void cuda_hasher::__run(cuda_device_info *device, int thread_id) {
 #endif
 
 	void *memory = device->arguments.host_seed_memory[thread_id];
+
+	argon2profile *profile = device->profile_info.profile;
+
 	argon2 hash_factory(cuda_kernel_prehasher, cuda_kernel_filler, cuda_kernel_posthasher, memory, &thread_data);
 	hash_factory.set_lane_length(2);
+	hash_factory.set_seed_memory_offset(2 * profile->thr_cost * ARGON2_BLOCK_SIZE);
+	hash_factory.set_threads(thread_data.threads);
 
 	while(__running) {
-		if(_should_pause()) {
+		if(device->profile_info.threads == 0 || _should_pause()) {
 			this_thread::sleep_for(chrono::milliseconds(100));
 			continue;
 		}
 
 		hash_data input = _get_input();
-		argon2profile *profile = argon2profile_default;
 
 		if(!input.base.empty()) {
-			if(device->profile_info.threads == 0) {
-				this_thread::sleep_for(chrono::milliseconds(100));
-				continue;
-			}
-			hash_factory.set_seed_memory_offset(4 * ARGON2_BLOCK_SIZE);
-			hash_factory.set_threads(thread_data.threads);
-
 			vector<hash_data> hashes;
 			int hash_count = hash_factory.generate_hashes(*profile, input, hashes);
 

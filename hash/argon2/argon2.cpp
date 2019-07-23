@@ -24,6 +24,7 @@ argon2::argon2(argon2_blocks_prehash prehash, argon2_blocks_filler_ptr filler, a
     __user_data = user_data;
     __inputs = NULL;
     __threads = 0;
+
     set_threads(1);
 }
 
@@ -63,7 +64,7 @@ bool argon2::initialize_seeds(const argon2profile &profile, hash_data &input) {
         uint8_t blockhash[ARGON2_PREHASH_SEED_LENGTH];
 
         for (int i = 0; i < __threads; i++) {
-            __initial_hash(profile, blockhash, (char *) base, base_sz, (char *) __inputs + i * IXIAN_NONCE_SIZE, IXIAN_NONCE_SIZE);
+            __initial_hash(profile, blockhash, (char *) base, base_sz, (char *)(__inputs + i * IXIAN_NONCE_SIZE));
 
             memset(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0,
                    ARGON2_PREHASH_SEED_LENGTH -
@@ -82,7 +83,6 @@ bool argon2::fill_blocks(const argon2profile &profile) {
 }
 
 int argon2::encode_hashes(const argon2profile &profile, hash_data &input, vector<hash_data> &results) {
-    char encoded_hash[ARGON2_RAW_LENGTH * 2 + 1];
     char encoded_nonce[IXIAN_NONCE_SIZE * 2 + 1];
     uint8_t byte_hash_ceil[10];
     int hash_ceil_sz = hex::decode(input.hash_ceil.c_str(), byte_hash_ceil, 10);
@@ -126,7 +126,7 @@ int argon2::encode_hashes(const argon2profile &profile, hash_data &input, vector
     }
 }
 
-void argon2::__initial_hash(const argon2profile &profile, uint8_t *blockhash, const char *base, size_t base_sz, const char *salt, size_t salt_sz) {
+void argon2::__initial_hash(const argon2profile &profile, uint8_t *blockhash, const char *base, size_t base_sz, const char *salt) {
     blake2b_state BlakeHash;
     uint32_t value;
 
@@ -152,15 +152,12 @@ void argon2::__initial_hash(const argon2profile &profile, uint8_t *blockhash, co
 
     value = (uint32_t)base_sz;
     blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    blake2b_update(&BlakeHash, (const uint8_t *)base, base_sz);
 
-    blake2b_update(&BlakeHash, (const uint8_t *)base,
-                   base_sz);
-
-    value = (uint32_t)salt_sz;
+    value = (uint32_t)(IXIAN_EXPANDED_NONCE_SIZE + IXIAN_NONCE_SIZE);
     blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    blake2b_update(&BlakeHash, (const uint8_t *)salt,
-                   salt_sz);
+    blake2b_update(&BlakeHash, (const uint8_t *)salt, IXIAN_NONCE_SIZE);
+    blake2b_update_static(&BlakeHash, 0x23, IXIAN_EXPANDED_NONCE_SIZE);
 
     value = 0;
     blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));

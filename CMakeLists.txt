@@ -31,7 +31,7 @@ set(SOURCE_COMMON app/arguments.cpp app/arguments.h common/common.h common/commo
 set(SOURCE_HASHER hash/hasher.cpp hash/hasher.h hash/argon2/argon2.cpp hash/argon2/argon2.h
         hash/argon2/defs.h hash/argon2/blake2/blake2b.c hash/argon2/blake2/blake2.h hash/argon2/blake2/blake2b-round.h
         hash/argon2/blake2/blake2b-load-sse41.h hash/argon2/blake2/blake2b-load-sse2.h hash/argon2/blake2/blake2-config.h
-        hash/argon2/argon2profile_4_4_16384.c hash/argon2/argon2profile_1_1_524288.c hash/argon2/argon2profile_1_2_1024.c)
+        hash/argon2/argon2profile_1_2_1024.c hash/argon2/argon2profile_2_2_2048.c)
 set(SOURCE_CPU_HASHER hash/cpu/cpu_hasher.cpp hash/cpu/cpu_hasher.h)
 set(SOURCE_OPENCL_HASHER hash/gpu/opencl/opencl_hasher.cpp hash/gpu/opencl/opencl_hasher.h
         hash/gpu/opencl/opencl_kernel.cpp hash/gpu/opencl/opencl_kernel.h)

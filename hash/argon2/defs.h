@@ -10,6 +10,7 @@
 #define ARGON2_VERSION                  0x13
 #define IXIAN_SEED_SIZE                 156
 #define IXIAN_NONCE_SIZE                64
+#define IXIAN_EXPANDED_NONCE_SIZE       234172
 
 #define ARGON2_BLOCK_SIZE               1024
 #define ARGON2_DWORDS_IN_BLOCK          ARGON2_BLOCK_SIZE / 4
@@ -34,11 +35,14 @@ typedef struct Argon2Profile {
     int32_t *block_refs;
     size_t block_refs_size;
     char profile_name[15];
-    int32_t *segments; // { start, stop (excluding), with_xor }
+    int32_t *segments; // { start segment / current block, stop segment (excluding) / previous block, addressing type = 0 -> i, 1 -> d }
+    uint32_t seg_size;
+    uint32_t seg_count;
+    uint32_t succ_idx; // 0 - idx are precalculated, 1 - idx are successive
+    int pwd_len; // in dwords
+    int salt_len; // in dwords
 } argon2profile;
 
-extern DLLEXPORT argon2profile argon2profile_4_4_16384;
-extern DLLEXPORT argon2profile argon2profile_1_1_524288;
 extern DLLEXPORT argon2profile argon2profile_1_2_1024;
 extern DLLEXPORT argon2profile *argon2profile_default;
 

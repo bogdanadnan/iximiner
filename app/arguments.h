@@ -5,6 +5,8 @@
 #ifndef IXIMINER_ARGUMENTS_H
 #define IXIMINER_ARGUMENTS_H
 
+#include "../hash/argon2/defs.h"
+
 class DLLEXPORT arguments {
 public:
     arguments(int argc, char *argv[]);
@@ -52,6 +54,8 @@ public:
 
     int get_cards_count() { return __cards_count; }
     void set_cards_count(int count) { __cards_count = count; }
+
+    argon2profile *argon2_profile() { return argon2profile_default; }
 
 private:
     void __init();

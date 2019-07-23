@@ -163,6 +163,61 @@ __device__ __forceinline__ int blake2b_update(uint32_t *in, int in_len, uint64_t
     return buf_len + in_len;
 }
 
+__device__ __forceinline__ int blake2b_update_static(uint32_t in, int in_len, uint64_t *h, uint32_t *buf, int buf_len, int thr_id)
+{
+    uint32_t *cursor_out = buf + buf_len;
+
+    if (buf_len + in_len > BLOCK_BYTES) {
+        int left = BLOCK_BYTES - buf_len;
+
+        for(int i=0; i < (left >> 2); i++, cursor_out += 4) {
+            cursor_out[thr_id] = in;
+        }
+
+        if(thr_id == 0) {
+            for (int i = 0; i < (left % 4); i++) {
+                cursor_out[i] = in;
+            }
+            blake2b_incrementCounter(h, BLOCK_BYTES);
+        }
+
+        blake2b_compress(h, (uint64_t*)buf, 0, thr_id);
+
+        buf_len = 0;
+
+        in_len -= left;
+
+        while (in_len > BLOCK_BYTES) {
+            if(thr_id == 0)
+                blake2b_incrementCounter(h, BLOCK_BYTES);
+
+            cursor_out = buf;
+
+            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_out += 4) {
+                cursor_out[thr_id] = in;
+            }
+
+            blake2b_compress(h, (uint64_t *)buf, 0, thr_id);
+
+            in_len -= BLOCK_BYTES;
+        }
+    }
+
+    cursor_out = buf + buf_len;
+
+    for(int i=0; i < (in_len >> 2); i++, cursor_out += 4) {
+        cursor_out[thr_id] = in;
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (in_len % 4); i++) {
+            cursor_out[i] = in;
+        }
+    }
+
+    return buf_len + in_len;
+}
+
 __device__ __forceinline__ void blake2b_final(uint32_t *out, int out_len, uint64_t *h, uint32_t *buf, int buf_len, int thr_id)
 {
     int left = BLOCK_BYTES - buf_len;

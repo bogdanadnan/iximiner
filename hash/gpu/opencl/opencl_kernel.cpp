@@ -7,7 +7,7 @@
 #include "opencl_kernel.h"
 
 string opencl_kernel = R"OCL(
-#define ITEMS_PER_SEGMENT               32
+#define THREADS_PER_HASH               32
 #define BLOCK_SIZE_ULONG                128
 #define BLOCK_SIZE_UINT                 256
 #define MEMSIZE					        1024
@@ -652,8 +652,8 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	int hash = get_group_id(0);
 	int local_id = get_local_id(0);
 
-	int id = local_id % ITEMS_PER_SEGMENT;
-	int segment = local_id / ITEMS_PER_SEGMENT;
+	int id = local_id % THREADS_PER_HASH;
+	int segment = local_id / THREADS_PER_HASH;
 	int offset = id * 4;
 
 	ulong chunks[6];

@@ -2,8 +2,8 @@
 // Created by Haifa Bogdan Adnan on 18/09/2018.
 //
 
-#ifndef ARIOMINER_CUDA_HASHER_H
-#define ARIOMINER_CUDA_HASHER_H
+#ifndef IXIMINER_CUDA_HASHER_H
+#define IXIMINER_CUDA_HASHER_H
 
 #if defined(WITH_CUDA)
 
@@ -14,12 +14,16 @@ struct cuda_kernel_arguments {
     void *memory_chunk_3;
     void *memory_chunk_4;
     void *memory_chunk_5;
-    uint32_t *address;
+
+    uint32_t *refs;
+    uint32_t *idxs;
     uint32_t *segments;
+
 	uint32_t *preseed_memory[2];
 	uint32_t *seed_memory[2];
 	uint32_t *out_memory[2];
 	uint32_t *hash_memory[2];
+
     uint32_t *host_seed_memory[2];
 };
 
@@ -27,16 +31,17 @@ struct argon2profile_info {
     argon2profile_info() {
         threads = 0;
         threads_per_chunk = 0;
+        profile = argon2profile_default;
     }
     uint32_t threads;
     uint32_t threads_per_chunk;
+    argon2profile *profile;
 };
 
 struct cuda_device_info {
 	cuda_device_info() {
 		device_index = 0;
 		device_string = "";
-		max_mem_size = 0;
 		free_mem_size = 0;
 		max_allocable_mem_size = 0;
 
@@ -48,7 +53,6 @@ struct cuda_device_info {
 	int cuda_index;
 
     string device_string;
-    uint64_t max_mem_size;
     uint64_t free_mem_size;
     uint64_t max_allocable_mem_size;
 
@@ -114,4 +118,4 @@ extern bool cuda_kernel_posthasher(void *memory, int threads, argon2profile *pro
 
 #endif //WITH_CUDA
 
-#endif //ARIOMINER_CUDA_HASHER_H
+#endif //IXIMINER_CUDA_HASHER_H
