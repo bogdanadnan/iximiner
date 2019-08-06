@@ -15,6 +15,18 @@ do { \
 	b = rotr64(b ^ c, 63); \
 } while ((void)0, 0)
 
+#define G_S(m, a, b, c, d) \
+do { \
+	a = a + b + m; \
+	d = rotr64(d ^ a, 32); \
+	c = c + d; \
+	b = rotr64(b ^ c, 24); \
+	a = a + b + m; \
+	d = rotr64(d ^ a, 16); \
+	c = c + d; \
+	b = rotr64(b ^ c, 63); \
+} while ((void)0, 0)
+
 #define ROUND(m, t, r) \
 do { \
 	G(m, r, t, v0, v1, v2, v3); \
@@ -22,6 +34,18 @@ do { \
     v2 = __shfl_sync(0xFFFFFFFF, v2, t + 2, 4); \
     v3 = __shfl_sync(0xFFFFFFFF, v3, t + 3, 4); \
 	G(m, r, (t + 4), v0, v1, v2, v3); \
+    v1 = __shfl_sync(0xFFFFFFFF, v1, t + 3, 4); \
+    v2 = __shfl_sync(0xFFFFFFFF, v2, t + 2, 4); \
+    v3 = __shfl_sync(0xFFFFFFFF, v3, t + 1, 4); \
+} while ((void)0, 0)
+
+#define ROUND_S(m, t) \
+do { \
+	G_S(m, v0, v1, v2, v3); \
+    v1 = __shfl_sync(0xFFFFFFFF, v1, t + 1, 4); \
+    v2 = __shfl_sync(0xFFFFFFFF, v2, t + 2, 4); \
+    v3 = __shfl_sync(0xFFFFFFFF, v3, t + 3, 4); \
+	G_S(m, v0, v1, v2, v3); \
     v1 = __shfl_sync(0xFFFFFFFF, v1, t + 3, 4); \
     v2 = __shfl_sync(0xFFFFFFFF, v2, t + 2, 4); \
     v3 = __shfl_sync(0xFFFFFFFF, v3, t + 1, 4); \
@@ -79,6 +103,36 @@ __device__ __forceinline__ void blake2b_compress(uint64_t *h, uint64_t *m, uint6
     ROUND(m, thr_id, 9);
     ROUND(m, thr_id, 10);
     ROUND(m, thr_id, 11);
+
+    h[thr_id] ^= v0 ^ v2;
+    h[thr_id + 4] ^= v1 ^ v3;
+}
+
+__device__ __forceinline__ void blake2b_compress_static(uint64_t *h, uint64_t m, uint64_t f0, int thr_id)
+{
+    uint64_t v0, v1, v2, v3;
+
+    v0 = h[thr_id];
+    v1 = h[thr_id + 4];
+    v2 = blake2b_IV[thr_id];
+    v3 = blake2b_IV[thr_id + 4];
+
+    if(thr_id == 0) v3 ^= h[8];
+    if(thr_id == 1) v3 ^= h[9];
+    if(thr_id == 2) v3 ^= f0;
+
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
+    ROUND_S(m, thr_id);
 
     h[thr_id] ^= v0 ^ v2;
     h[thr_id + 4] ^= v1 ^ v3;
@@ -165,6 +219,10 @@ __device__ __forceinline__ int blake2b_update(uint32_t *in, int in_len, uint64_t
 
 __device__ __forceinline__ int blake2b_update_static(uint32_t in, int in_len, uint64_t *h, uint32_t *buf, int buf_len, int thr_id)
 {
+    uint64_t in64 = in;
+    in64 = in64 << 32;
+    in64 = in64 | in;
+
     uint32_t *cursor_out = buf + buf_len;
 
     if (buf_len + in_len > BLOCK_BYTES) {
@@ -191,13 +249,7 @@ __device__ __forceinline__ int blake2b_update_static(uint32_t in, int in_len, ui
             if(thr_id == 0)
                 blake2b_incrementCounter(h, BLOCK_BYTES);
 
-            cursor_out = buf;
-
-            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_out += 4) {
-                cursor_out[thr_id] = in;
-            }
-
-            blake2b_compress(h, (uint64_t *)buf, 0, thr_id);
+            blake2b_compress_static(h, in64, 0, thr_id);
 
             in_len -= BLOCK_BYTES;
         }
