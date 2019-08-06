@@ -39,6 +39,18 @@ do { \
 	b = rotr64(b ^ c, 63); \
 } while ((void)0, 0)
 
+#define G_S(m, a, b, c, d) \
+do { \
+	a = a + b + m; \
+	d = rotr64(d ^ a, 32); \
+	c = c + d; \
+	b = rotr64(b ^ c, 24); \
+	a = a + b + m; \
+	d = rotr64(d ^ a, 16); \
+	c = c + d; \
+	b = rotr64(b ^ c, 63); \
+} while ((void)0, 0)
+
 #define ROUND(m, t, r, shfl) \
 do { \
 	G(m, r, t, v0, v1, v2, v3); \
@@ -50,6 +62,26 @@ do { \
     v2 = shfl[((t + 2) % 4)+ 8]; \
     v3 = shfl[((t + 3) % 4)+ 12]; \
 	G(m, r, (t + 4), v0, v1, v2, v3); \
+    shfl[((t + 1) % 4)+ 4] = v1; \
+    shfl[((t + 2) % 4)+ 8] = v2; \
+    shfl[((t + 3) % 4)+ 12] = v3; \
+    barrier(CLK_LOCAL_MEM_FENCE); \
+    v1 = shfl[t + 4]; \
+    v2 = shfl[t + 8]; \
+    v3 = shfl[t + 12]; \
+} while ((void)0, 0)
+
+#define ROUND_S(m, t, shfl) \
+do { \
+	G_S(m, v0, v1, v2, v3); \
+    shfl[t + 4] = v1; \
+    shfl[t + 8] = v2; \
+    shfl[t + 12] = v3; \
+    barrier(CLK_LOCAL_MEM_FENCE); \
+    v1 = shfl[((t + 1) % 4)+ 4]; \
+    v2 = shfl[((t + 2) % 4)+ 8]; \
+    v3 = shfl[((t + 3) % 4)+ 12]; \
+	G_S(m, v0, v1, v2, v3); \
     shfl[((t + 1) % 4)+ 4] = v1; \
     shfl[((t + 2) % 4)+ 8] = v2; \
     shfl[((t + 3) % 4)+ 12] = v3; \
@@ -113,6 +145,38 @@ void blake2b_compress(__local ulong *h, __local ulong *m, ulong f0, __local ulon
     ROUND(m, thr_id, 9, shfl);
     ROUND(m, thr_id, 10, shfl);
     ROUND(m, thr_id, 11, shfl);
+
+    h[thr_id] ^= v0 ^ v2;
+    h[thr_id + 4] ^= v1 ^ v3;
+}
+
+void blake2b_compress_static(__local ulong *h, ulong m, ulong f0, __local ulong *shfl, int thr_id)
+{
+    ulong v0, v1, v2, v3;
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    v0 = h[thr_id];
+    v1 = h[thr_id + 4];
+    v2 = blake2b_IV[thr_id];
+    v3 = blake2b_IV[thr_id + 4];
+
+    if(thr_id == 0) v3 ^= h[8];
+    if(thr_id == 1) v3 ^= h[9];
+    if(thr_id == 2) v3 ^= f0;
+
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
+    ROUND_S(m, thr_id, shfl);
 
     h[thr_id] ^= v0 ^ v2;
     h[thr_id + 4] ^= v1 ^ v3;
@@ -250,6 +314,10 @@ int blake2b_update_global(__global uint *in, int in_len, __local ulong *h, __loc
 
 int blake2b_update_static(uint in, int in_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
 {
+    ulong in64 = in;
+    in64 = in64 << 32;
+    in64 = in64 | in;
+
     __local uint *cursor_out = buf + buf_len;
 
     if (buf_len + in_len > BLOCK_BYTES) {
@@ -276,13 +344,7 @@ int blake2b_update_static(uint in, int in_len, __local ulong *h, __local uint *b
             if(thr_id == 0)
                 blake2b_incrementCounter(h, BLOCK_BYTES);
 
-            cursor_out = buf;
-
-            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_out += 4) {
-                cursor_out[thr_id] = in;
-            }
-
-            blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+            blake2b_compress_static(h, in64, 0, shfl, thr_id);
 
             in_len -= BLOCK_BYTES;
         }
