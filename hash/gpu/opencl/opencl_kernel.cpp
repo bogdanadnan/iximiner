@@ -7,13 +7,11 @@
 #include "opencl_kernel.h"
 
 string opencl_kernel = R"OCL(
-#define THREADS_PER_HASH               32
+#define THREADS_PER_LANE               32
 #define BLOCK_SIZE_ULONG                128
 #define BLOCK_SIZE_UINT                 256
-#define MEMSIZE					        1024
 #define ARGON2_PREHASH_DIGEST_LENGTH_UINT   16
 #define ARGON2_PREHASH_SEED_LENGTH_UINT     18
-#define IXIAN_SEED_SIZE_UINT                39
 
 #define ARGON2_BLOCK_SIZE 1024
 #define ARGON2_DWORDS_IN_BLOCK (ARGON2_BLOCK_SIZE / 4)
@@ -244,6 +242,61 @@ int blake2b_update_global(__global uint *in, int in_len, __local ulong *h, __loc
     if(thr_id == 0) {
         for (int i = 0; i < (in_len % 4); i++) {
             cursor_out[i] = cursor_in[i];
+        }
+    }
+
+    return buf_len + in_len;
+}
+
+int blake2b_update_static(uint in, int in_len, __local ulong *h, __local uint *buf, int buf_len, __local ulong *shfl, int thr_id)
+{
+    __local uint *cursor_out = buf + buf_len;
+
+    if (buf_len + in_len > BLOCK_BYTES) {
+        int left = BLOCK_BYTES - buf_len;
+
+        for(int i=0; i < (left >> 2); i++, cursor_out += 4) {
+            cursor_out[thr_id] = in;
+        }
+
+        if(thr_id == 0) {
+            for (int i = 0; i < (left % 4); i++) {
+                cursor_out[i] = in;
+            }
+            blake2b_incrementCounter(h, BLOCK_BYTES);
+        }
+
+        blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+        buf_len = 0;
+
+        in_len -= left;
+
+        while (in_len > BLOCK_BYTES) {
+            if(thr_id == 0)
+                blake2b_incrementCounter(h, BLOCK_BYTES);
+
+            cursor_out = buf;
+
+            for(int i=0; i < (BLOCK_BYTES / 4); i++, cursor_out += 4) {
+                cursor_out[thr_id] = in;
+            }
+
+            blake2b_compress(h, (__local ulong *)buf, 0, shfl, thr_id);
+
+            in_len -= BLOCK_BYTES;
+        }
+    }
+
+    cursor_out = buf + buf_len;
+
+    for(int i=0; i < (in_len >> 2); i++, cursor_out += 4) {
+        cursor_out[thr_id] = in;
+    }
+
+    if(thr_id == 0) {
+        for (int i = 0; i < (in_len % 4); i++) {
+            cursor_out[i] = in;
         }
     }
 
@@ -642,19 +695,24 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 						__global ulong *chunk_5,
 						__global ulong *seed,
 						__global ulong *out,
-						__global int *addresses,
-						__global int *segments,
-						int threads_per_chunk) {
-	__local ulong scratchpad[2 * BLOCK_SIZE_ULONG];
+						__global uint *refs,
+						__global uint *idxs,
+						__global uint *segments,
+                        int memsize,
+                        int lanes,
+                        int seg_length,
+                        int seg_count,
+						int threads_per_chunk,
+                        __local ulong *scratchpad) { // lanes * BLOCK_SIZE_ULONG
 	ulong4 tmp;
 	ulong a, b, c, d;
 
 	int hash = get_group_id(0);
 	int local_id = get_local_id(0);
 
-	int id = local_id % THREADS_PER_HASH;
-	int segment = local_id / THREADS_PER_HASH;
-	int offset = id * 4;
+	int id = local_id % THREADS_PER_LANE;
+	int lane = local_id / THREADS_PER_LANE;
+	int lane_length = seg_length * 4;
 
 	ulong chunks[6];
 	chunks[0] = (ulong)chunk_0;
@@ -665,7 +723,7 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	chunks[5] = (ulong)chunk_5;
 	int chunk_index = hash / threads_per_chunk;
 	int chunk_offset = hash - chunk_index * threads_per_chunk;
-	__global ulong *memory = (__global ulong *)chunks[chunk_index] + chunk_offset * MEMSIZE * BLOCK_SIZE_ULONG;
+	__global ulong *memory = (__global ulong *)chunks[chunk_index] + chunk_offset * (memsize / 8);
 
 	int i1_0 = offsets_round_1[id][0];
 	int i1_1 = offsets_round_1[id][1];
@@ -688,172 +746,244 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 	int i4_3 = offsets_round_4[id][3];
 
 	__global ulong *out_mem = out + hash * BLOCK_SIZE_ULONG;
-	__global ulong *seed_mem = seed + hash * 4 * BLOCK_SIZE_ULONG + segment * 2 * BLOCK_SIZE_ULONG;
+	__global ulong *seed_mem = seed + hash * lanes * 2 * BLOCK_SIZE_ULONG + lane * 2 * BLOCK_SIZE_ULONG;
 
-	__global ulong *seed_dst = memory + segment * 512 * BLOCK_SIZE_ULONG;
+	__global ulong *seed_dst = memory + lane * lane_length * BLOCK_SIZE_ULONG;
 
-	vstore4(vload4(0, seed_mem + offset), 0, seed_dst + offset);
+	vstore4(vload4(id, seed_mem), id, seed_dst);
 
 	seed_mem += BLOCK_SIZE_ULONG;
 	seed_dst += BLOCK_SIZE_ULONG;
 
-	vstore4(vload4(0, seed_mem + offset), 0, seed_dst + offset);
+	vstore4(vload4(id, seed_mem), id, seed_dst);
 
 	__global ulong *next_block;
 	__global ulong *prev_block;
-	__global ulong *ref_block;
+    __global uint *seg_refs;
+    __global uint *seg_idxs;
 
-	__local ulong *state = scratchpad + segment * BLOCK_SIZE_ULONG;
+	__local ulong *state = scratchpad + lane * BLOCK_SIZE_ULONG;
 
-	segments += segment;
-	int inc = 126;
+	segments += (lane * 3);
 
-	for(int s=0; s<4; s++) {
+	for(int s=0; s < (seg_count / lanes); s++) {
 		int idx = ((s == 0) ? 2 : 0); // index for first slice in each lane is 2
 
-		__global ushort *curr_seg = (__global ushort *)(segments + s * 2);
+		int with_xor = ((s >= 4) ? 1 : 0);
+		int keep = 1;
+		int slice = s % 4;
+		int pass = s / 4;
+		__global int *cur_seg = &segments[s * lanes * 3];
 
-		ushort addr_start_idx = curr_seg[0];
-		ushort prev_blk_idx = curr_seg[1];
+		int cur_idx = cur_seg[0];
+        int prev_idx = cur_seg[1];
+        int seg_type = cur_seg[2];
+        int ref_idx = 0;
+        ulong4 ref = 0, next = 0;
 
-		__global short *start_addr = (__global short *)(addresses + addr_start_idx);
-		__global short *stop_addr = (__global short *)(addresses + addr_start_idx + inc);
-		inc = 128;
+		prev_block = memory + prev_idx * BLOCK_SIZE_ULONG;
 
-		prev_block = memory + prev_blk_idx * BLOCK_SIZE_ULONG;
+		tmp = vload4(id, prev_block);
 
-		tmp = vload4(0, prev_block + offset);
-        vstore4(tmp, 0, state + offset);
+        if(seg_type == 0) {
+            seg_refs = refs + ((s * lanes + lane) * seg_length - ((s > 0) ? lanes : lane) * 2);
+            ref_idx = seg_refs[0];
 
-		ulong4 ref = 0, next = 0;
-		ulong4 nextref = 0;
-
-        short addr1 = start_addr[1];
-        if(addr1 != -1) {
-    		nextref = vload4(0, memory + addr1 * BLOCK_SIZE_ULONG + offset);
-        }
-
-		for(; start_addr < stop_addr; start_addr+=2, idx++) {
-            addr1 = start_addr[1];
-			next_block = memory + start_addr[0] * BLOCK_SIZE_ULONG;
-
-            if(addr1 != -1) {
-                ref = nextref;
-                if(start_addr + 2 < stop_addr)
-                    nextref = vload4(0, memory + start_addr[3] * BLOCK_SIZE_ULONG + offset);
+            if(idxs != 0) {
+                seg_idxs = idxs + ((s * lanes + lane) * seg_length - ((s > 0) ? lanes : lane) * 2);
+                cur_idx = seg_idxs[0];
             }
-            else {
+
+            ulong4 nextref = vload4(id, memory + ref_idx * BLOCK_SIZE_ULONG);
+
+            for (int i=0;idx < seg_length;i++, idx++) {
+    			next_block = memory + (cur_idx & 0x7FFFFFFF) * BLOCK_SIZE_ULONG;
+
+                if(with_xor == 1)
+                    next = vload4(id, next_block);
+
+                ref = nextref;
+
+                if (idx < seg_length - 1) {
+                    ref_idx = seg_refs[i + 1];
+
+                    if(idxs != 0) {
+                        keep = cur_idx & 0x80000000;
+                        cur_idx = seg_idxs[i + 1];
+                    }
+                    else
+                        cur_idx++;
+
+                    nextref = vload4(id, memory + ref_idx * BLOCK_SIZE_ULONG);
+                }
+
+                tmp ^= ref;
+
+                vstore4(tmp, id, state);
+
+                G1(state);
+                G2(state);
+                G3(state);
+                G4(state);
+
+                if(with_xor == 1)
+                    tmp ^= next;
+
+                tmp ^= vload4(id, state);
+
+                if(keep > 0) {
+                    vstore4(tmp, id, next_block);
+                    mem_fence(CLK_GLOBAL_MEM_FENCE);
+                }
+            }
+        }
+        else {
+            vstore4(tmp, id, state);
+            mem_fence(CLK_LOCAL_MEM_FENCE);
+
+            for (int i=0;idx < seg_length;i++, idx++, cur_idx++) {
                 ulong pseudo_rand = state[0];
 
-                ulong ref_lane = ((pseudo_rand >> 32)) % 2; // thr_cost
+                ulong ref_lane = ((pseudo_rand >> 32)) % lanes; // thr_cost
                 uint reference_area_size = 0;
-                if (segment == ref_lane) {
-                    reference_area_size =
-                            s * 128 + idx - 1; // seg_length
-                } else {
-                    reference_area_size =
-                            s * 128 + ((idx == 0) ? (-1) : 0);
-                }
+
+				if(pass > 0) {
+					if (lane == ref_lane) {
+						reference_area_size = lane_length - seg_length + idx - 1;
+					} else {
+						reference_area_size = lane_length - seg_length + ((idx == 0) ? (-1) : 0);
+					}
+				}
+				else {
+					if (lane == ref_lane) {
+						reference_area_size = slice * seg_length + idx - 1; // seg_length
+					} else {
+						reference_area_size = slice * seg_length + ((idx == 0) ? (-1) : 0);
+					}
+				}
+
                 ulong relative_position = pseudo_rand & 0xFFFFFFFF;
-                relative_position = relative_position * relative_position >> 32;
+                relative_position = (relative_position * relative_position) >> 32;
 
                 relative_position = reference_area_size - 1 -
-                                    (reference_area_size * relative_position >> 32);
+                                    ((reference_area_size * relative_position) >> 32);
 
-                addr1 = ref_lane * 512 + relative_position % 512; // lane_length
+				ref_idx = ref_lane * lane_length + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
 
-        		ref = vload4(0, memory + addr1 * BLOCK_SIZE_ULONG + offset);
+        		ref = vload4(id, memory + ref_idx * BLOCK_SIZE_ULONG);
+
+    			next_block = memory + cur_idx * BLOCK_SIZE_ULONG;
+
+                if(with_xor == 1)
+                    next = vload4(id, next_block);
+
+                tmp ^= ref;
+
+                vstore4(tmp, id, state);
+
+                G1(state);
+                G2(state);
+                G3(state);
+                G4(state);
+
+                if(with_xor == 1)
+                    tmp ^= next;
+
+                tmp ^= vload4(id, state);
+
+                vstore4(tmp, id, state);
+                vstore4(tmp, id, next_block);
+                mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
             }
+        }
+    }
 
-            tmp ^= ref;
+    vstore4(tmp, id, state);
+    mem_fence(CLK_LOCAL_MEM_FENCE);
 
-			vstore4(tmp, 0, state + offset);
+	if(lane == 0) { // first lane needs to acumulate results
+		for(int l=1; l<lanes; l++)
+            tmp ^= vload4(id, scratchpad + l * BLOCK_SIZE_ULONG);
 
-			G1(state);
-			G2(state);
-			G3(state);
-			G4(state);
-
-			tmp ^= vload4(0, state + offset);
-
-            vstore4(tmp, 0, next_block + offset);
-            vstore4(tmp, 0, state + offset);
-		}
-		barrier(CLK_GLOBAL_MEM_FENCE);
+        vstore4(tmp, id, out_mem);
 	}
-
-	__global short *out_addr = (__global short *)(addresses + 1020);
-
-	ulong out_data0 = (memory + out_addr[0] * BLOCK_SIZE_ULONG)[local_id];
-	ulong out_data1 = (memory + out_addr[0] * BLOCK_SIZE_ULONG)[local_id + 64];
-
-	out_data0 ^= (memory + out_addr[1] * BLOCK_SIZE_ULONG)[local_id];
-	out_data1 ^= (memory + out_addr[1] * BLOCK_SIZE_ULONG)[local_id + 64];
-
-	out_mem[local_id] = out_data0;
-	out_mem[local_id + 64] = out_data1;
 };
 
 __kernel void prehash (
         __global uint *preseed,
         __global uint *seed,
+		int memsz,
+		int lanes,
+		int passes,
+		int pwdlen,
+		int saltlen,
+        int threads,
         __local ulong *blake_shared) {
+	int seeds_batch_size = get_local_size(0) / 4; // number of seeds per block
+	int hash_batch_size = seeds_batch_size / (lanes * 2); // number of hashes per block
 
-    int hash = get_group_id(0) * 4;
-    int id = get_local_id(0); // 64 threads
+	int id = get_local_id(0); // minimum 64 threads
+	int thr_id = id % 4; // thread id in session
+	int session = id / 4; // blake2b hashing session
 
-    int hash_idx = id >> 4;
+    int hash = get_group_id(0) * hash_batch_size;
+    int hash_idx = session / (lanes * 2);
+
     hash += hash_idx;
-    id = id & 0xF;
 
-    int thr_id = id % 4; // thread id in session
-    int session = id / 4; // 4 blake2b hashing session
-    int lane = session / 2;  // 2 lanes
-    int idx = session % 2; // idx in lane
+    if(hash < threads) {
+        int hash_session = session % (lanes * 2); // session in hash
 
-    __local uint *local_mem = (__local uint *)&blake_shared[(hash_idx * 4 + session) * BLAKE_SHARED_MEM_ULONG];
-    __global uint *local_preseed = preseed + hash * IXIAN_SEED_SIZE_UINT;
-    __global uint *local_seed = seed + (hash * 4 + session) * BLOCK_SIZE_UINT;
+        int lane = hash_session / 2;  // 2 lanes
+        int idx = hash_session % 2; // idx in lane
 
-    __local ulong *h = (__local ulong *)&local_mem[20];
-	__local ulong *shfl = &h[10];
-	__local uint *buf = (__local uint *)&shfl[16];
-	__local uint *value = &buf[32];
+        int preseed_size = pwdlen + saltlen;
 
-    int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
-    *value = 2; //lanes
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = 32; //outlen
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = 1024; //m_cost
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = 1; //t_cost
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = ARGON2_VERSION; //version
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = ARGON2_TYPE_VALUE; //type
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    *value = 92; //pw_len
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_global(local_preseed, 23, h, buf, buf_len, shfl, thr_id);
-    *value = 64; //salt_len
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_global(local_preseed + 23, 16, h, buf, buf_len, shfl, thr_id);
-    *value = 0; //secret_len
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
-    *value = 0; //ad_len
-    buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
-    buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
+        __local uint *local_mem = (__local uint *)&blake_shared[session * BLAKE_SHARED_MEM_ULONG];
+        __global uint *local_preseed = preseed + hash * preseed_size;
+        __global uint *local_seed = seed + (hash * lanes * 2 + hash_session) * BLOCK_SIZE_UINT;
 
-    blake2b_final_local(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, shfl, thr_id);
+        __local ulong *h = (__local ulong *)&local_mem[20];
+        __local ulong *shfl = &h[10];
+        __local uint *buf = (__local uint *)&shfl[16];
+        __local uint *value = &buf[32];
 
-    if (thr_id == 0) {
-        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
-        local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+        int buf_len = blake2b_init(h, ARGON2_PREHASH_DIGEST_LENGTH_UINT, thr_id);
+        *value = lanes; //lanes
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = 32; //outlen
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = memsz; //m_cost
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = passes; //t_cost
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = ARGON2_VERSION; //version
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = ARGON2_TYPE_VALUE; //type
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        *value = pwdlen * 4; //pw_len
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        buf_len = blake2b_update_global(local_preseed, pwdlen, h, buf, buf_len, shfl, thr_id);
+        *value = (saltlen + 58543) * 4; //salt_len
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        buf_len = blake2b_update_global(local_preseed + pwdlen, saltlen, h, buf, buf_len, shfl, thr_id);
+        buf_len = blake2b_update_static(0x23232323, 58543, h, buf, buf_len, shfl, thr_id);
+        *value = 0; //secret_len
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
+        *value = 0; //ad_len
+        buf_len = blake2b_update_local(value, 1, h, buf, buf_len, shfl, thr_id);
+        buf_len = blake2b_update_local(0, 0, h, buf, buf_len, shfl, thr_id);
+
+        blake2b_final_local(local_mem, ARGON2_PREHASH_DIGEST_LENGTH_UINT, h, buf, buf_len, shfl, thr_id);
+
+        if (thr_id == 0) {
+            local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT] = idx;
+            local_mem[ARGON2_PREHASH_DIGEST_LENGTH_UINT + 1] = lane;
+        }
+
+        blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, (__local ulong *)&local_mem[20]);
     }
-
-    blake2b_digestLong_local(local_seed, ARGON2_DWORDS_IN_BLOCK, local_mem, ARGON2_PREHASH_SEED_LENGTH_UINT, thr_id, (__local ulong *)&local_mem[20]);
 }
 
 __kernel void posthash (
