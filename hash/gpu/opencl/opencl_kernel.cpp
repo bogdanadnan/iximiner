@@ -45,7 +45,7 @@ do { \
     shfl[t + 4] = v1; \
     shfl[t + 8] = v2; \
     shfl[t + 12] = v3; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
     v1 = shfl[((t + 1) % 4)+ 4]; \
     v2 = shfl[((t + 2) % 4)+ 8]; \
     v3 = shfl[((t + 3) % 4)+ 12]; \
@@ -53,7 +53,7 @@ do { \
     shfl[((t + 1) % 4)+ 4] = v1; \
     shfl[((t + 2) % 4)+ 8] = v2; \
     shfl[((t + 3) % 4)+ 12] = v3; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
     v1 = shfl[t + 4]; \
     v2 = shfl[t + 8]; \
     v3 = shfl[t + 12]; \
@@ -90,7 +90,7 @@ void blake2b_compress(__local ulong *h, __local ulong *m, ulong f0, __local ulon
 {
     ulong v0, v1, v2, v3;
 
-    barrier(CLK_LOCAL_barrier);
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     v0 = h[thr_id];
     v1 = h[thr_id + 4];
@@ -636,7 +636,7 @@ __constant char offsets_round_4[32][4] = {
 
 #define G1(data) \
 { \
-	barrier(CLK_LOCAL_barrier); \
+	barrier(CLK_LOCAL_MEM_FENCE); \
 	a = data[i1_0]; \
 	b = data[i1_1]; \
 	c = data[i1_2]; \
@@ -645,7 +645,7 @@ __constant char offsets_round_4[32][4] = {
 	data[i1_1] = b; \
     data[i1_2] = c; \
     data[i1_3] = d; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
 }
 
 #define G2(data) \
@@ -658,7 +658,7 @@ __constant char offsets_round_4[32][4] = {
 	data[i2_1] = b; \
     data[i2_2] = c; \
     data[i2_3] = d; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
 }
 
 #define G3(data) \
@@ -671,7 +671,7 @@ __constant char offsets_round_4[32][4] = {
 	data[i3_1] = b; \
     data[i3_2] = c; \
     data[i3_3] = d; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
 }
 
 #define G4(data) \
@@ -684,7 +684,7 @@ __constant char offsets_round_4[32][4] = {
 	data[i4_1] = b; \
     data[i4_2] = c; \
     data[i4_3] = d; \
-    barrier(CLK_LOCAL_barrier); \
+    barrier(CLK_LOCAL_MEM_FENCE); \
 }
 
 __kernel void fill_blocks(__global ulong *chunk_0,
@@ -833,13 +833,13 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 
                 if(keep > 0) {
                     vstore4(tmp, id, next_block);
-                    barrier(CLK_GLOBAL_barrier);
+                    barrier(CLK_GLOBAL_MEM_FENCE);
                 }
             }
         }
         else {
             vstore4(tmp, id, state);
-            barrier(CLK_LOCAL_barrier);
+            barrier(CLK_LOCAL_MEM_FENCE);
 
             for (int i=0;idx < seg_length;i++, idx++, cur_idx++) {
                 ulong pseudo_rand = state[0];
@@ -893,13 +893,13 @@ __kernel void fill_blocks(__global ulong *chunk_0,
 
                 vstore4(tmp, id, state);
                 vstore4(tmp, id, next_block);
-                barrier(CLK_GLOBAL_barrier | CLK_LOCAL_barrier);
+                barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
             }
         }
     }
 
     vstore4(tmp, id, state);
-    barrier(CLK_LOCAL_barrier);
+    barrier(CLK_LOCAL_MEM_FENCE);
 
 	if(lane == 0) { // first lane needs to acumulate results
 		for(int l=1; l<lanes; l++)
