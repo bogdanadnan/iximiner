@@ -55,7 +55,8 @@ public:
     int get_cards_count() { return __cards_count; }
     void set_cards_count(int count) { __cards_count = count; }
 
-    argon2profile *argon2_profile() { return argon2profile_default; }
+    argon2profile *get_argon2_profile() { return __profile; }
+    void set_argon2_profile(argon2profile *profile) { __profile = profile; }
 
 private:
     void __init();
@@ -98,6 +99,7 @@ private:
 	int __enable_api_port;
 
 	int __cards_count;
+	argon2profile *__profile;
     static string __argv_0;
 };
 

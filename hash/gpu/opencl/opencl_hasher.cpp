@@ -569,7 +569,7 @@ bool opencl_hasher::configure(arguments &args) {
         ss << "["<< (index + 1) << "] " << (*d)->device_string;
         string device_description = ss.str();
         (*d)->device_index = index;
-        (*d)->profile_info.profile = args.argon2_profile();
+        (*d)->profile_info.profile = args.get_argon2_profile();
 
         if(filter.size() > 0) {
             bool found = false;
@@ -684,7 +684,7 @@ bool opencl_kernel_prehasher(void *memory, int threads, argon2profile *profile, 
 
     cl_int error;
 
-    int sessions = std::max(profile->thr_cost * 2, (uint32_t)16);
+    int sessions = max(profile->thr_cost * 2, (uint32_t)16);
     double hashes_per_block = sessions / (profile->thr_cost * 2.0);
 
     size_t total_work_items = sessions * 4 * ceil(threads / hashes_per_block);

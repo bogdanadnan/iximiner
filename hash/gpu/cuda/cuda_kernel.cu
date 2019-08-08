@@ -1021,7 +1021,7 @@ bool cuda_kernel_prehasher(void *memory, int threads, argon2profile *profile, vo
     cuda_device_info *device = gpumgmt_thread->device;
     cudaStream_t stream = (cudaStream_t)gpumgmt_thread->device_data;
 
-    int sessions = std::max(profile->thr_cost * 2, (uint32_t)8);
+    int sessions = max(profile->thr_cost * 2, (uint32_t)8);
     double hashes_per_block = sessions / (profile->thr_cost * 2.0);
     size_t work_items = sessions * 4;
 
