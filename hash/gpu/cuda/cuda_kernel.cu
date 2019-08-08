@@ -8,7 +8,7 @@
 
 #include "cuda_hasher.h"
 
-#define THREADS_PER_HASH               32
+#define THREADS_PER_LANE               32
 #define BLOCK_SIZE_UINT4                64
 #define BLOCK_SIZE_UINT                256
 #define KERNEL_WORKGROUP_SIZE   		32
@@ -365,8 +365,8 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 	int local_id = threadIdx.x;
 	int lane_length = seg_length * 4;
 
-	int id = local_id % THREADS_PER_HASH;
-	int lane = local_id / THREADS_PER_HASH;
+	int id = local_id % THREADS_PER_LANE;
+	int lane = local_id / THREADS_PER_LANE;
 
 	int offset = id << 2;
 
@@ -532,7 +532,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
                     tmp_a ^= tmp_c;
                     tmp_b ^= tmp_d;
 
-                    if(keep == 1) {
+                    if(keep > 0) {
 						next_block[id] = tmp_a;
 						next_block[id + 32] = tmp_b;
 					}
@@ -572,7 +572,7 @@ __global__ void fill_blocks(uint32_t *scratchpad0,
 
 				uint32_t relative_position = reference_area_size - 1 - pseudo_rand_lo;
 
-				ref_idx = ref_lane * (seg_length * 4) + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
+				ref_idx = ref_lane * lane_length + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
 
 				ref_block = memory + ref_idx * BLOCK_SIZE_UINT4;
 

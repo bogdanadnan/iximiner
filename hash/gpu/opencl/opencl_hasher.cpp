@@ -184,8 +184,7 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
         return false;
     }
 
-    device->profile_info.threads_per_chunk = (uint32_t) (device->max_allocable_mem_size /
-                                                         device->profile_info.profile->memsize);
+    device->profile_info.threads_per_chunk = (uint32_t) (device->max_allocable_mem_size / device->profile_info.profile->memsize);
     size_t chunk_size = device->profile_info.threads_per_chunk * device->profile_info.profile->memsize;
 
     if (chunk_size == 0) {
@@ -322,7 +321,7 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
     }
 
     device->arguments.refs = clCreateBuffer(device->context, CL_MEM_READ_ONLY,
-                                            device->profile_info.profile->block_refs_size * sizeof(int32_t), NULL,
+                                            device->profile_info.profile->block_refs_size * sizeof(uint32_t), NULL,
                                             &error);
     if (error != CL_SUCCESS) {
         device->error = error;
@@ -335,7 +334,7 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
     }
     else {
         device->arguments.idxs = clCreateBuffer(device->context, CL_MEM_READ_ONLY,
-                                                device->profile_info.profile->block_refs_size * sizeof(int32_t), NULL,
+                                                device->profile_info.profile->block_refs_size * sizeof(uint32_t), NULL,
                                                 &error);
         if (error != CL_SUCCESS) {
             device->error = error;
@@ -459,9 +458,24 @@ bool opencl_hasher::__setup_device_info(opencl_device_info *device, double inten
 	clSetKernelArg(device->kernel_fill_blocks, 3, sizeof(device->arguments.memory_chunk_3), &device->arguments.memory_chunk_3);
 	clSetKernelArg(device->kernel_fill_blocks, 4, sizeof(device->arguments.memory_chunk_4), &device->arguments.memory_chunk_4);
 	clSetKernelArg(device->kernel_fill_blocks, 5, sizeof(device->arguments.memory_chunk_5), &device->arguments.memory_chunk_5);
-	clSetKernelArg(device->kernel_fill_blocks, 8, sizeof(device->arguments.refs), &device->arguments.refs);
-	clSetKernelArg(device->kernel_fill_blocks, 9, sizeof(device->arguments.segments), &device->arguments.segments);
-	clSetKernelArg(device->kernel_fill_blocks, 10, sizeof(int32_t), &device->profile_info.threads_per_chunk);
+    clSetKernelArg(device->kernel_fill_blocks, 8, sizeof(device->arguments.refs), &device->arguments.refs);
+    if(device->profile_info.profile->succ_idx == 1)
+        clSetKernelArg(device->kernel_fill_blocks, 9, sizeof(device->arguments.idxs), &device->arguments.idxs);
+    else
+        clSetKernelArg(device->kernel_fill_blocks, 9, sizeof(cl_mem), NULL);
+	clSetKernelArg(device->kernel_fill_blocks, 10, sizeof(device->arguments.segments), &device->arguments.segments);
+    clSetKernelArg(device->kernel_fill_blocks, 11, sizeof(int32_t), &device->profile_info.profile->memsize);
+    clSetKernelArg(device->kernel_fill_blocks, 12, sizeof(int32_t), &device->profile_info.profile->thr_cost);
+    clSetKernelArg(device->kernel_fill_blocks, 13, sizeof(int32_t), &device->profile_info.profile->seg_size);
+    clSetKernelArg(device->kernel_fill_blocks, 14, sizeof(int32_t), &device->profile_info.profile->seg_count);
+    clSetKernelArg(device->kernel_fill_blocks, 15, sizeof(int32_t), &device->profile_info.threads_per_chunk);
+
+    clSetKernelArg(device->kernel_prehash, 2, sizeof(int32_t), &device->profile_info.profile->mem_cost);
+    clSetKernelArg(device->kernel_prehash, 3, sizeof(int32_t), &device->profile_info.profile->thr_cost);
+    int passes = device->profile_info.profile->seg_count / (4 * device->profile_info.profile->thr_cost);
+    clSetKernelArg(device->kernel_prehash, 4, sizeof(int32_t), &passes);
+    clSetKernelArg(device->kernel_prehash, 5, sizeof(int32_t), &device->profile_info.profile->pwd_len);
+    clSetKernelArg(device->kernel_prehash, 6, sizeof(int32_t), &device->profile_info.profile->salt_len);
 
     return true;
 }
@@ -702,11 +716,8 @@ bool opencl_kernel_prehasher(void *memory, int threads, argon2profile *profile, 
 
     clSetKernelArg(device->kernel_prehash, 0, sizeof(device->arguments.preseed_memory[gpumgmt_thread->thread_id]), &device->arguments.preseed_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_prehash, 1, sizeof(device->arguments.seed_memory[gpumgmt_thread->thread_id]), &device->arguments.seed_memory[gpumgmt_thread->thread_id]);
-    clSetKernelArg(device->kernel_prehash, 2, sizeof(uint32_t), &profile->thr_cost);
-    clSetKernelArg(device->kernel_prehash, 3, sizeof(int), &profile->pwd_len);
-    clSetKernelArg(device->kernel_prehash, 4, sizeof(int), &profile->salt_len);
-    clSetKernelArg(device->kernel_prehash, 5, sizeof(int), &threads);
-    clSetKernelArg(device->kernel_prehash, 6, sessions * sizeof(cl_ulong) * 60, NULL);
+    clSetKernelArg(device->kernel_prehash, 7, sizeof(int), &threads);
+    clSetKernelArg(device->kernel_prehash, 8, sessions * sizeof(cl_ulong) * 60, NULL);
 
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_prehash, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {
@@ -728,8 +739,12 @@ void *opencl_kernel_filler(void *memory, int threads, argon2profile *profile, vo
 	size_t total_work_items = threads * KERNEL_WORKGROUP_SIZE * profile->thr_cost;
 	size_t local_work_items = KERNEL_WORKGROUP_SIZE * profile->thr_cost;
 
+    size_t shared_mem = profile->thr_cost * ARGON2_QWORDS_IN_BLOCK;
+
     clSetKernelArg(device->kernel_fill_blocks, 6, sizeof(device->arguments.seed_memory[gpumgmt_thread->thread_id]), &device->arguments.seed_memory[gpumgmt_thread->thread_id]);
     clSetKernelArg(device->kernel_fill_blocks, 7, sizeof(device->arguments.out_memory[gpumgmt_thread->thread_id]), &device->arguments.out_memory[gpumgmt_thread->thread_id]);
+    clSetKernelArg(device->kernel_fill_blocks, 16, sizeof(cl_ulong) * shared_mem, NULL);
+
     error=clEnqueueNDRangeKernel(device->queue, device->kernel_fill_blocks, 1, NULL, &total_work_items, &local_work_items, 0, NULL, NULL);
     if(error != CL_SUCCESS) {
         device->error = error;
@@ -798,7 +813,7 @@ void opencl_hasher::__run(opencl_device_info *device, int thread_id) {
     hash_factory.set_threads(device->profile_info.threads);
 
     while(__running) {
-        if(_should_pause()) {
+        if(device->profile_info.threads == 0 || _should_pause()) {
             this_thread::sleep_for(chrono::milliseconds(100));
             continue;
         }
@@ -806,11 +821,6 @@ void opencl_hasher::__run(opencl_device_info *device, int thread_id) {
         hash_data input = _get_input();
 
         if(!input.base.empty()) {
-            if(device->profile_info.threads == 0) {
-                this_thread::sleep_for(chrono::milliseconds(100));
-                continue;
-            }
-
             vector<hash_data> hashes;
             int hash_count = hash_factory.generate_hashes(*profile, input, hashes);
 
