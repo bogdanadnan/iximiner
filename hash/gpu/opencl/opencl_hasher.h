@@ -22,7 +22,8 @@ struct opencl_kernel_arguments {
     cl_mem memory_chunk_3;
     cl_mem memory_chunk_4;
     cl_mem memory_chunk_5;
-    cl_mem address;
+    cl_mem refs;
+    cl_mem idxs;
     cl_mem segments;
     cl_mem preseed_memory[2];
     cl_mem seed_memory[2];
@@ -31,8 +32,15 @@ struct opencl_kernel_arguments {
 };
 
 struct argon2profile_info {
+    argon2profile_info() {
+        threads = 0;
+        threads_per_chunk = 0;
+        profile = argon2profile_default;
+    }
+
     uint32_t threads;
     uint32_t threads_per_chunk;
+    argon2profile *profile;
 };
 
 struct opencl_device_info {

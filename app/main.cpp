@@ -35,6 +35,7 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sigIntHandler, NULL);
 #endif
     arguments args(argc, argv);
+    args.set_argon2_profile(argon2profile_default);
 
     if(args.is_help()) {
         cout << args.get_help() << endl;

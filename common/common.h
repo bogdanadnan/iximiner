@@ -20,7 +20,7 @@
 #include <iomanip>
 #include <regex>
 #include <random>
-
+#include <algorithm>
 #include <thread>
 #include <mutex>
 #include <chrono>

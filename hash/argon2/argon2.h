@@ -27,7 +27,7 @@ public:
     void set_lane_length(int length); // in blocks
     void set_threads(int threads);
 private:
-    void __initial_hash(const argon2profile &profile, uint8_t *blockhash, const char *base, size_t base_sz, const char *salt, size_t salt_sz);
+    void __initial_hash(const argon2profile &profile, uint8_t *blockhash, const char *base, size_t base_sz, const char *salt);
     void __fill_first_blocks(const argon2profile &profile, uint8_t *blockhash, int thread);
 
 	bool __check_hash(uint8_t *hash, int hash_sz, uint8_t *hash_ceil, int hash_ceil_sz);
