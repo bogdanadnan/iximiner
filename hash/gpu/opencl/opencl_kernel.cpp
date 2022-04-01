@@ -906,31 +906,25 @@ __kernel void fill_blocks(__global ulong *chunk_0,
             for (int i=0;idx < seg_length;i++, idx++, cur_idx++) {
                 ulong pseudo_rand = state[0];
 
-                ulong ref_lane = ((pseudo_rand >> 32)) % lanes; // thr_cost
-                uint reference_area_size = 0;
+                uint ref_lane = ((uint)(pseudo_rand >> 32)) & 1;
+                uint reference_area_size = min(3, s) << 8;
 
-				if(pass > 0) {
-					if (lane == ref_lane) {
-						reference_area_size = lane_length - seg_length + idx - 1;
-					} else {
-						reference_area_size = lane_length - seg_length + ((idx == 0) ? (-1) : 0);
-					}
-				}
-				else {
-					if (lane == ref_lane) {
-						reference_area_size = slice * seg_length + idx - 1; // seg_length
-					} else {
-						reference_area_size = slice * seg_length + ((idx == 0) ? (-1) : 0);
-					}
-				}
+                uint test1 = ref_lane ^ lane;
+                uint test2 = min(idx, 1);
+                reference_area_size += ((test1-1) & idx);
+                reference_area_size -= (1-(test2 & test1));
 
                 ulong relative_position = pseudo_rand & 0xFFFFFFFF;
                 relative_position = (relative_position * relative_position) >> 32;
 
                 relative_position = reference_area_size - 1 -
-                                    ((reference_area_size * relative_position) >> 32);
+                                ((reference_area_size * relative_position) >> 32);
 
-				ref_idx = ref_lane * lane_length + (((pass > 0 && slice < 3) ? ((slice + 1) * seg_length) : 0) + relative_position) % lane_length;
+                test1 = s >> 2;
+                test2 = min((7 - s), 1);
+                test1 = (0 - (test1 & test2)) & ((s - 3) << 8);
+
+                ref_idx = (ref_lane << 10) + ((test1 + relative_position) & 0x3FF);
 
         		ref = vload4(id, memory + ref_idx * BLOCK_SIZE_ULONG);
 
